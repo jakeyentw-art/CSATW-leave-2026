@@ -6,6 +6,12 @@
     <title>2026 CSA 員工休假管理系統 (全年度雲端同步版)</title>
     <!-- 載入外觀樣式庫 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 載入相容性極高、不受 ES Module 限制的 Firebase compat 庫 -->
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
+    
     <style>
         /* 專屬滾動條美化 */
         .scrollbar-thin::-webkit-scrollbar {
@@ -326,55 +332,15 @@
         </div>
     </div>
 
-    <!-- 載入 Firebase 11.6.1 ES 模組以確保雲端即時同步 -->
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, doc, setDoc, collection, onSnapshot, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-
+    <!-- 頁面主邏輯 -->
+    <script>
         // ==========================================
-        // 1. 初始化與雲端雙軌檢查
+        // 1. 全域變數定義與防呆清洗協定 (Sanitizer)
         // ==========================================
         let appId = localStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
         let db = null;
         let auth = null;
         let firebaseReady = false;
-
-        // 優先順序：1. 使用者自行在網頁設定的同步金鑰 -> 2. 本地預留
-        let activeConfigStr = localStorage.getItem('custom_firebase_config');
-
-        try {
-            if (activeConfigStr) {
-                const firebaseConfig = JSON.parse(activeConfigStr);
-                const app = initializeApp(firebaseConfig);
-                auth = getAuth(app);
-                db = getFirestore(app);
-                firebaseReady = true;
-            }
-        } catch (e) {
-            console.warn("無法初始化 Firebase 設定，切換至本機沙盒儲存。", e);
-            firebaseReady = false;
-        }
-
-        // ==========================================
-        // 2. 系統核心資料集與 2026 台灣國定假日
-        // ==========================================
-        function generateDatesFor2026() {
-            const dates = [];
-            const start = new Date(2026, 4, 1); // 5月
-            const end = new Date(2026, 11, 31); // 12月
-            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
-            
-            let current = new Date(start);
-            while (current <= end) {
-                const m = String(current.getMonth() + 1).padStart(2, '0');
-                const d = String(current.getDate()).padStart(2, '0');
-                const w = weekdays[current.getDay()];
-                dates.push(`${m}/${d}(${w})`);
-                current.setDate(current.getDate() + 1);
-            }
-            return dates;
-        }
 
         const HOLIDAYS_2026 = {
             '05/01': { name: '勞動節', type: 'TW' },
@@ -392,7 +358,7 @@
             { id: '1', role: 'Director', name: 'Joie', leaves: { '06/15(一)': '全日休假', '06/19(五)': '端午節', '06/30(二)': '端午節' } },
             { id: '2', role: 'BI', name: 'Peggy', leaves: { '05/27(三)': '上午休假2小時', '05/28(四)': '全日休假', '06/02(二)': '下午休假3小時' } },
             { id: '3', role: 'BI', name: 'Daisy', leaves: { '05/29(五)': '下午休假3小時', '06/12(五)': '全日休假' } },
-            { id: '4', role: 'REM', name: 'Shaun', leaves: { '06/04(四)': '全日休假', '06/09(二)': '全日休假' } },
+            { id: '4', role: 'REM', name: 'Shaun', leaves: { '06/04(過)': '全日休假', '06/09(二)': '全日休假' } },
             { id: '5', role: 'Trainer', name: 'Marvel', leaves: { '06/01(一)': '上午休假4小時' } },
             { id: '6', role: 'Trainer', name: 'Megan', leaves: { '06/15(一)': '上午休假2小時', '06/16(二)': '下午休假4小時' } },
             { id: '7', role: 'DSM', name: 'Jake', leaves: { '05/29(五)': '全日休假', '06/12(五)': '全日休假', '06/25(四)': '全日休假' } },
@@ -401,52 +367,128 @@
             { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '下午休假4小時', '05/29(五)': '全日休假' } }
         ];
 
-        // 全域核心狀態
+        // 核心防呆函數：確保任何進入系統的同仁資料結構都是完整、絕不崩潰的
+        function sanitizeEmployees(rawEmployees) {
+            if (!Array.isArray(rawEmployees)) return INITIAL_EMPLOYEES;
+            return rawEmployees.map(emp => {
+                return {
+                    id: emp.id ? String(emp.id) : String(Date.now() + Math.random()),
+                    name: emp.name ? String(emp.name) : '未命名同仁',
+                    role: emp.role ? String(emp.role) : '未定義職務',
+                    leaves: (emp.leaves && typeof emp.leaves === 'object') ? emp.leaves : {}
+                };
+            });
+        }
+
         let employees = [];
         let dateList = generateDatesFor2026();
-        let monthFilter = '05'; 
+        let monthFilter = getDefaultMonthFilter(); 
         let viewMode = 'timeline'; 
         let selectedCell = null; 
         let currentPeriod = '上午'; 
         const TODAY_STR = '05/29(五)'; 
 
         // ==========================================
-        // 3. 雲端資料庫串接與認證
+        // 2. 初始化與開機載入優化（即時、不阻塞 UI）
         // ==========================================
-        async function runAuthAndSync() {
-            if (!firebaseReady) {
-                // 本地離線儲存模式
-                loadLocalFallback();
-                return;
-            }
+        window.onload = function() {
+            document.getElementById('today-display').innerText = getFullTodayDisplay();
+            renderLegend();
+            
+            // ⭐️ 第一步：0秒即刻先由本地快取渲染（確保網頁在任何網路下都能一瞬間打開！）
+            loadLocalFallback();
 
-            try {
-                // Rule 3: 先 Auth，後查詢
-                updateSyncBadgeConnecting();
-                const userCredential = await signInAnonymously(auth);
-                const user = userCredential.user;
+            // ⭐️ 第二步：背景安靜嘗試雲端同步連線
+            runAuthAndSync();
+        };
 
-                if (user) {
-                    updateSyncBadge(true);
-                    setupRealtimeSync(user);
-                } else {
-                    throw new Error("無法取得有效 User 信物");
-                }
-            } catch (err) {
-                console.error("雲端同步連線失敗:", err);
-                showToast("雲端連線失敗，已切換至本機離線模式", "error");
-                firebaseReady = false;
-                loadLocalFallback();
+        function generateDatesFor2026() {
+            const dates = [];
+            const start = new Date(2026, 4, 1); // 5月
+            const end = new Date(2026, 11, 31); // 12月
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            
+            let current = new Date(start);
+            while (current <= end) {
+                const m = String(current.getMonth() + 1).padStart(2, '0');
+                const d = String(current.getDate()).padStart(2, '0');
+                const w = weekdays[current.getDay()];
+                dates.push(`${m}/${d}(${w})`);
+                current.setDate(current.getDate() + 1);
             }
+            return dates;
+        }
+
+        function getFullTodayDisplay() {
+            return "2026年05月29日 (五)";
+        }
+
+        function getDefaultMonthFilter() {
+            const now = new Date();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            if (['05', '06', '07', '08', '09', '10', '11', '12'].includes(m)) {
+                return m;
+            }
+            return '05';
         }
 
         function loadLocalFallback() {
-            employees = JSON.parse(localStorage.getItem('csa_leaves_2026')) || INITIAL_EMPLOYEES;
+            const cached = localStorage.getItem('csa_leaves_2026');
+            employees = cached ? sanitizeEmployees(JSON.parse(cached)) : sanitizeEmployees(INITIAL_EMPLOYEES);
             updateSyncBadge(false);
             renderMonthTabs();
             renderRoleDropdown();
             renderAll();
             calculateStats();
+        }
+
+        // ==========================================
+        // 3. 雲端資料庫安全同步（Compat 協議防阻擋）
+        // ==========================================
+        async function runAuthAndSync() {
+            // 檢查 Firebase 的 UMD 腳本是否被瀏覽器的廣告阻擋插件/公司防護網封鎖
+            if (typeof firebase === 'undefined') {
+                console.warn("偵測到 Firebase SDK 載入受阻（可能受廣告屏蔽插件或內網影響），系統將切換至 [本機離線安全模式]");
+                firebaseReady = false;
+                loadLocalFallback();
+                return;
+            }
+
+            let activeConfigStr = localStorage.getItem('custom_firebase_config');
+            if (!activeConfigStr) {
+                // 如果用戶尚未設定雲端，保持安全的本地模式，並更新狀態列
+                firebaseReady = false;
+                updateSyncBadge(false);
+                return;
+            }
+
+            try {
+                // 初始化
+                const firebaseConfig = JSON.parse(activeConfigStr);
+                if (firebase.apps.length === 0) {
+                    firebase.initializeApp(firebaseConfig);
+                }
+                auth = firebase.auth();
+                db = firebase.firestore();
+                firebaseReady = true;
+
+                updateSyncBadgeConnecting();
+
+                // 認證 (Rule 3)
+                auth.signInAnonymously().then((userCredential) => {
+                    if (userCredential.user) {
+                        updateSyncBadge(true);
+                        setupRealtimeSync();
+                    }
+                }).catch(err => {
+                    throw err;
+                });
+
+            } catch (err) {
+                console.error("雲端連線失敗，自動轉向本地安全暫存模式:", err);
+                firebaseReady = false;
+                loadLocalFallback();
+            }
         }
 
         function updateSyncBadgeConnecting() {
@@ -458,38 +500,37 @@
         function updateSyncBadge(isCloud) {
             const badge = document.getElementById('sync-badge');
             if (isCloud) {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 雲端同步中 (多人協作)`;
+                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm cursor-pointer hover:bg-emerald-500/30 transition-all";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 雲端同步中 (多人協作模式)`;
             } else {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> ⚪ 本地離線儲存模式 (點此設定)`;
+                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 cursor-pointer hover:bg-slate-500/30 transition-all";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> ⚪ 本地離線儲存模式 (點此進行同步設定)`;
             }
         }
 
-        // 即時監聽 Firestore (Rule 1 & Rule 2)
-        function setupRealtimeSync(user) {
-            if (!user) return; // Guard
+        function setupRealtimeSync() {
+            if (!firebaseReady || !db) return;
 
-            const datesDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'metadata', 'dates');
-            const empColRef = collection(db, 'artifacts', appId, 'public', 'data', 'employees');
+            // 取得對應 Workspace 實體路徑 (Rule 1)
+            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').document ? 
+                db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates') :
+                db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
 
-            // 監聽日期清單
-            onSnapshot(datesDocRef, (docSnap) => {
-                if (!auth.currentUser) return; // Guard
-                if (docSnap.exists()) {
+            const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
+
+            // 監聽日期
+            datesDocRef.onSnapshot((docSnap) => {
+                if (docSnap.exists) {
                     dateList = docSnap.data().dates || generateDatesFor2026();
                 } else {
-                    setDoc(datesDocRef, { dates: generateDatesFor2026() });
+                    datesDocRef.set({ dates: generateDatesFor2026() });
                 }
                 renderMonthTabs();
                 renderAll();
-            }, (err) => {
-                console.error("日期同步異常:", err);
-            });
+            }, (err) => console.error("日期同步異常:", err));
 
-            // 監聽員工資料 (Rule 2: 簡單 collection() 抓取，其餘排序/過濾在瀏覽器端記憶體計算)
-            onSnapshot(empColRef, (querySnap) => {
-                if (!auth.currentUser) return; // Guard
+            // 監聽同仁資料 (Rule 2)
+            empColRef.onSnapshot((querySnap) => {
                 const tempEmployees = [];
                 querySnap.forEach((doc) => {
                     tempEmployees.push({
@@ -499,12 +540,12 @@
                 });
 
                 if (tempEmployees.length > 0) {
-                    employees = tempEmployees;
+                    employees = sanitizeEmployees(tempEmployees);
                 } else {
-                    // 首次連線：初始化雲端預設資料
-                    employees = INITIAL_EMPLOYEES;
-                    INITIAL_EMPLOYEES.forEach(async (emp) => {
-                        await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'employees', emp.id), {
+                    // 初始化種子
+                    employees = sanitizeEmployees(INITIAL_EMPLOYEES);
+                    INITIAL_EMPLOYEES.forEach((emp) => {
+                        empColRef.doc(emp.id).set({
                             name: emp.name,
                             role: emp.role,
                             leaves: emp.leaves
@@ -515,15 +556,14 @@
                 renderAll();
                 calculateStats();
             }, (err) => {
-                console.error("員工同步權限不足:", err);
-                showToast("雲端同步失敗（請確認安全規則是否設定為允許讀寫）", "error");
+                console.error("同步遭遇異常，退回本地安全模式:", err);
                 firebaseReady = false;
                 loadLocalFallback();
             });
         }
 
         // ==========================================
-        // 4. 下載/存檔、UI 樂觀渲染架構 (Optimistic Local UI)
+        // 4. 極速前台繪製 (Optimistic High-Speed Rendering)
         // ==========================================
         function getLeaveStyle(val) {
             if (!val) return { label: '💻 上班', bg: 'bg-slate-50 hover:bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
@@ -563,7 +603,6 @@
             }
         }
 
-        // 主要表格與看板計算
         function renderAll() {
             const searchTerm = document.getElementById('search-input').value.toLowerCase();
             const roleFilter = document.getElementById('role-filter').value;
@@ -576,7 +615,7 @@
             filteredDates.forEach(date => {
                 let count = 0;
                 employees.forEach(emp => {
-                    const status = emp.leaves[date];
+                    const status = (emp.leaves || {})[date];
                     if (status && status !== '國定假日' && status !== '端午節') {
                         count++;
                     }
@@ -589,7 +628,7 @@
             let onLeaveToday = 0;
             let workingToday = 0;
             employees.forEach(emp => {
-                const status = emp.leaves[TODAY_STR];
+                const status = (emp.leaves || {})[TODAY_STR];
                 if (!status) workingToday++;
                 else if (status !== '國定假日' && status !== '端午節') onLeaveToday++;
             });
@@ -601,11 +640,11 @@
             document.getElementById('stat-bar').style.width = `${rate}%`;
             document.getElementById('stat-leave').innerText = `${onLeaveToday} 位成員`;
 
-            // 雙向凍結層級定位：交會處 z-50，置頂 z-30
+            // 置頂凍結 (Sticky)
             const headerRow = document.getElementById('table-headers');
             let headerHtml = `
-                <th class="sticky left-0 top-0 z-50 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600">職務</th>
-                <th class="sticky left-28 top-0 z-50 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">同仁姓名</th>
+                <th class="sticky left-0 top-0 z-40 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600">職務</th>
+                <th class="sticky left-28 top-0 z-40 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">同仁姓名</th>
                 <th class="sticky top-0 z-30 bg-slate-50 p-3 w-20 font-bold text-center border-r border-slate-100 text-slate-600">休假天數</th>
             `;
 
@@ -669,7 +708,7 @@
 
             let bodyHtml = '';
             filteredEmployees.forEach(emp => {
-                const takenCount = Object.entries(emp.leaves).filter(([d, val]) => {
+                const takenCount = Object.entries(emp.leaves || {}).filter(([d, val]) => {
                     return val && val !== '國定假日' && val !== '端午節';
                 }).length;
 
@@ -687,7 +726,7 @@
                 `;
 
                 filteredDates.forEach(date => {
-                    const val = emp.leaves[date] || '';
+                    const val = (emp.leaves || {})[date] || '';
                     const isSaturday = date.includes('六');
                     const isSunday = date.includes('日');
                     const isToday = date === TODAY_STR;
@@ -744,16 +783,16 @@
         }
 
         // ==========================================
-        // 5. 樂觀寫入操作 (Optimistic Write Actions)
+        // 5. 樂觀 UI 異步控制 (Optimistic Updates)
         // ==========================================
         async function selectLeaveType(value) {
             if (!selectedCell) return;
             const { empId, date } = selectedCell;
 
-            // 1. 樂觀 UI 渲染：立刻改動本地狀態，使用者一秒看到效果！
+            // A. 前台樂觀變更 (0秒即時反映！)
             employees = employees.map(emp => {
                 if (emp.id === empId) {
-                    const updatedLeaves = { ...emp.leaves };
+                    const updatedLeaves = { ...(emp.leaves || {}) };
                     if (value === '') {
                         delete updatedLeaves[date];
                     } else {
@@ -766,18 +805,18 @@
             renderAll();
             calculateStats();
 
-            // 2. 背景異步同步
-            if (firebaseReady && auth.currentUser) {
-                const empDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'employees', empId);
+            // B. 異步同步至雲端/本地
+            if (firebaseReady && db && auth && auth.currentUser) {
+                const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
                 const emp = employees.find(e => e.id === empId);
                 if (emp) {
-                    setDoc(empDocRef, {
+                    empColRef.doc(empId).set({
                         name: emp.name,
                         role: emp.role,
                         leaves: emp.leaves
                     }).catch(err => {
-                        console.error("Firestore 同步失敗:", err);
-                        showToast("雲端儲存失敗！已暫存於本機瀏覽器", "error");
+                        console.error("雲端暫時中斷，切為本地快取備份:", err);
+                        saveData();
                     });
                 }
             } else {
@@ -786,11 +825,6 @@
 
             closeModal();
             showToast(`已儲存新休假狀態！`);
-        }
-
-        function toggleAddForm() {
-            const form = document.getElementById('add-form');
-            form.classList.toggle('hidden');
         }
 
         async function handleAddEmployee() {
@@ -810,16 +844,14 @@
                 leaves: {}
             };
 
-            // 樂觀本地新增
             employees.push(newEmp);
             renderRoleDropdown();
             renderAll();
             calculateStats();
 
-            // 背景上傳
-            if (firebaseReady && auth.currentUser) {
-                const empDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'employees', newId);
-                setDoc(empDocRef, {
+            if (firebaseReady && db && auth && auth.currentUser) {
+                const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
+                empColRef.doc(newId).set({
                     name: newEmp.name,
                     role: newEmp.role,
                     leaves: newEmp.leaves
@@ -836,22 +868,14 @@
 
         async function handleDeleteEmployee(id, name) {
             if (confirm(`確定要將「${name}」從排班表中徹底移除嗎？`)) {
-                // 樂觀本地移除
-                const backup = [...employees];
                 employees = employees.filter(emp => emp.id !== id);
                 renderRoleDropdown();
                 renderAll();
                 calculateStats();
 
-                if (firebaseReady && auth.currentUser) {
-                    const empDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'employees', id);
-                    deleteDoc(empDocRef).catch(err => {
-                        console.error(err);
-                        employees = backup; // 失敗回滾
-                        renderRoleDropdown();
-                        renderAll();
-                        calculateStats();
-                    });
+                if (firebaseReady && db && auth && auth.currentUser) {
+                    const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
+                    empColRef.doc(id).delete().catch(err => console.error(err));
                 } else {
                     saveData();
                 }
@@ -860,7 +884,7 @@
         }
 
         // ==========================================
-        // 6. 其餘系統與檔案事件
+        // 6. 其他 UI / 大數據分析與匯入匯出
         // ==========================================
         function toggleAddForm() {
             const form = document.getElementById('add-form');
@@ -964,7 +988,7 @@
 
             const counts = {};
             employees.forEach(emp => {
-                Object.values(emp.leaves).forEach(val => {
+                Object.values(emp.leaves || {}).forEach(val => {
                     if (val) counts[val] = (counts[val] || 0) + 1;
                 });
             });
@@ -988,7 +1012,7 @@
             }
 
             const totals = employees.map(emp => {
-                const total = Object.entries(emp.leaves).filter(([d, val]) => {
+                const total = Object.entries(emp.leaves || {}).filter(([d, val]) => {
                     return val && val !== '國定假日' && val !== '端午節';
                 }).length;
                 return { name: emp.name, role: emp.role, total };
@@ -1016,7 +1040,7 @@
             dateList.forEach(date => {
                 let count = 0;
                 employees.forEach(emp => {
-                    const status = emp.leaves[date];
+                    const status = (emp.leaves || {})[date];
                     if (status && status !== '國定假日' && status !== '端午節') {
                         count++;
                     }
@@ -1086,8 +1110,7 @@
                     }
 
                     if (parsedEmployees.length > 0) {
-                        // 樂觀本地渲染
-                        employees = parsedEmployees;
+                        employees = sanitizeEmployees(parsedEmployees);
                         dateList = dateHeaders;
                         renderRoleDropdown();
                         const firstDate = dateHeaders[0];
@@ -1098,21 +1121,22 @@
                         renderAll();
                         calculateStats();
 
-                        // 雲端同步
-                        if (firebaseReady && auth.currentUser) {
+                        if (firebaseReady && db && auth && auth.currentUser) {
                             showToast('正在同步上傳至雲端資料庫...');
+                            const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
+                            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
+                            
                             for (const emp of employees) {
-                                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'employees', emp.id));
+                                await empColRef.doc(emp.id).delete();
                             }
                             for (const emp of parsedEmployees) {
-                                await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'employees', emp.id), {
+                                await empColRef.doc(emp.id).set({
                                     name: emp.name,
                                     role: emp.role,
                                     leaves: emp.leaves
                                 });
                             }
-                            const datesDocRef = doc(db, 'artifacts', appId, 'public', 'data', 'metadata', 'dates');
-                            await setDoc(datesDocRef, { dates: dateHeaders });
+                            await datesDocRef.set({ dates: dateHeaders });
                         } else {
                             saveData();
                         }
@@ -1134,7 +1158,7 @@
                     const rowCells = [
                         emp.role,
                         emp.name,
-                        ...dateList.map(date => emp.leaves[date] || '')
+                        ...dateList.map(date => (emp.leaves || {})[date] || '')
                     ];
                     return rowCells.map(cell => {
                         const str = String(cell);
@@ -1226,9 +1250,6 @@
         window.closeConfigModal = closeConfigModal;
         window.saveConfig = saveConfig;
         window.clearConfig = clearConfig;
-
-        // 啟動
-        runAuthAndSync();
     </script>
 </body>
 </html>
