@@ -6,12 +6,6 @@
     <title>2026 CSA 員工休假管理系統 (全年度雲端同步版)</title>
     <!-- 載入外觀樣式庫 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 載入相容性極高、不受 ES Module 限制的 Firebase compat 庫 -->
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-app-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-auth-compat.js"></script>
-    <script src="https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore-compat.js"></script>
-    
     <style>
         /* 專屬滾動條美化 */
         .scrollbar-thin::-webkit-scrollbar {
@@ -338,9 +332,21 @@ const firebaseConfig = { ... }
     <!-- 頁面主邏輯 -->
     <script>
         // ==========================================
-        // 1. 全域變數定義與防呆清洗協定 (Sanitizer)
+        // 1. 全域變數與 SafeStorage 智慧防卡死沙盒
         // ==========================================
-        let appId = localStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
+        const safeStorage = {
+            getItem(key) {
+                try { return localStorage.getItem(key); } catch (e) { return null; }
+            },
+            setItem(key, val) {
+                try { localStorage.setItem(key, val); } catch (e) {}
+            },
+            removeItem(key) {
+                try { localStorage.removeItem(key); } catch (e) {}
+            }
+        };
+
+        let appId = safeStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
         let db = null;
         let auth = null;
         let firebaseReady = false;
@@ -367,7 +373,7 @@ const firebaseConfig = { ... }
             { id: '7', role: 'DSM', name: 'Jake', leaves: { '05/29(五)': '全日休假', '06/12(五)': '全日休假', '06/25(四)': '全日休假' } },
             { id: '8', role: 'DSM', name: 'Alvin', leaves: { '06/19(五)': '端午節', '06/22(一)': '全日休假' } },
             { id: '9', role: 'QA', name: 'Fiona', leaves: { '06/05(五)': '下午休假4小時' } },
-            { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '下午休假4小時', '05/29(五)': '全日休假' } }
+            { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '事假', '05/29(五)': '全日休假' } }
         ];
 
         function sanitizeEmployees(rawEmployees) {
@@ -388,26 +394,36 @@ const firebaseConfig = { ... }
         let viewMode = 'timeline'; 
         let selectedCell = null; 
         let currentPeriod = '上午'; 
-        const TODAY_STR = '05/29(五)'; 
+        const TODAY_STR = getTodayStr(); 
 
         // ==========================================
-        // 2. 初始化與開機載入優化（即時、不阻塞 UI）
+        // 2. 開機引導與非同步優雅載入
         // ==========================================
         window.onload = function() {
             document.getElementById('today-display').innerText = getFullTodayDisplay();
             renderLegend();
             
-            // 第一步：先由本地快取渲染（確保網頁能在一瞬間打開！）
+            // ⭐️ 0.01秒先由本地快取渲染（保證永不卡死）
             loadLocalFallback();
 
-            // 第二步：背景安靜嘗試雲端同步連線
+            // ⭐️ 背景靜默連線
             runAuthAndSync();
         };
 
+        function loadScript(url) {
+            return new Promise((resolve, reject) => {
+                const script = document.createElement('script');
+                script.src = url;
+                script.onload = resolve;
+                script.onerror = () => reject(new Error(`無法加載資源: ${url}`));
+                document.head.appendChild(script);
+            });
+        }
+
         function generateDatesFor2026() {
             const dates = [];
-            const start = new Date(2026, 4, 1); 
-            const end = new Date(2026, 11, 31); 
+            const start = new Date(2026, 4, 1); // 5月
+            const end = new Date(2026, 11, 31); // 12月
             const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
             
             let current = new Date(start);
@@ -421,9 +437,25 @@ const firebaseConfig = { ... }
             return dates;
         }
 
-        // 當天固定格式
+        function getTodayStr() {
+            const now = new Date();
+            // 強制模擬 2026 時間日期定位，排除跨年份星期偏差
+            const year2026Date = new Date(2026, now.getMonth(), now.getDate());
+            const m = String(year2026Date.getMonth() + 1).padStart(2, '0');
+            const d = String(year2026Date.getDate()).padStart(2, '0');
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const w = weekdays[year2026Date.getDay()];
+            return `${m}/${d}(${w})`;
+        }
+
         function getFullTodayDisplay() {
-            return "2026年05月29日 (五)";
+            const now = new Date();
+            const year2026Date = new Date(2026, now.getMonth(), now.getDate());
+            const m = String(year2026Date.getMonth() + 1).padStart(2, '0');
+            const d = String(year2026Date.getDate()).padStart(2, '0');
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const w = weekdays[year2026Date.getDay()];
+            return `2026年${m}月${d}日 (${w})`;
         }
 
         function getDefaultMonthFilter() {
@@ -436,9 +468,9 @@ const firebaseConfig = { ... }
         }
 
         function loadLocalFallback() {
-            const cached = localStorage.getItem('csa_leaves_2026');
+            const cached = safeStorage.getItem('csa_leaves_2026');
             employees = cached ? sanitizeEmployees(JSON.parse(cached)) : sanitizeEmployees(INITIAL_EMPLOYEES);
-            updateSyncBadge(false);
+            updateSyncBadge('offline');
             renderMonthTabs();
             renderRoleDropdown();
             renderAll();
@@ -446,20 +478,29 @@ const firebaseConfig = { ... }
         }
 
         // ==========================================
-        // 3. 雲端資料庫安全同步（Compat 協議防阻擋）
+        // 3. 雲端資料庫智慧防卡連線與錯誤診斷
         // ==========================================
         async function runAuthAndSync() {
-            if (typeof firebase === 'undefined') {
-                console.warn("偵測到 Firebase SDK 載入受阻（可能受廣告屏蔽插件或內網影響），系統將切換至 [本機離線安全模式]");
-                firebaseReady = false;
+            updateSyncBadge('connecting');
+            
+            // 1. 動態按序載入相容性 Firebase Compat SDK，防範阻擋卡死
+            try {
+                if (typeof firebase === 'undefined') {
+                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
+                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
+                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
+                }
+            } catch (e) {
+                console.error("Firebase SDK 載入遭阻擋:", e);
+                updateSyncBadge('error', 'Firebase 資源載入遭廣告插件或防火牆阻擋');
                 loadLocalFallback();
                 return;
             }
 
-            let activeConfigStr = localStorage.getItem('custom_firebase_config');
+            // 2. 檢測是否有設定金鑰
+            let activeConfigStr = safeStorage.getItem('custom_firebase_config');
             if (!activeConfigStr) {
-                firebaseReady = false;
-                updateSyncBadge(false);
+                updateSyncBadge('offline');
                 return;
             }
 
@@ -471,84 +512,66 @@ const firebaseConfig = { ... }
                 auth = firebase.auth();
                 db = firebase.firestore();
 
-                updateSyncBadgeConnecting();
-
-                // ⭐️ 重大修正：使用「await」進行阻斷式非同步等待，
-                // 這樣一來如果連線或安全驗證（Anonymous）失敗，異常才會「真正被 catch 捕捉」！
+                // 3. 異步安全登入 (Rule 3)
                 const userCredential = await auth.signInAnonymously();
                 
                 if (userCredential && userCredential.user) {
-                    firebaseReady = true;
-                    updateSyncBadge(true);
+                    updateSyncBadge('online');
                     setupRealtimeSync();
                 } else {
-                    throw new Error("認證回傳值無效");
+                    throw new Error("授權失敗");
                 }
 
             } catch (err) {
-                console.error("雲端連線失敗:", err);
-                firebaseReady = false;
-                
-                let errorMsg = "❌ 雲端連線失敗";
+                console.error("Firebase 雲端連線失敗:", err);
+                let details = "連線失敗";
                 if (err && err.code) {
                     switch(err.code) {
                         case 'auth/operation-not-allowed':
-                            errorMsg = "❌ 請至 Firebase 啟用 Anonymous (匿名登入) 功能！";
+                            details = "請至 Firebase 啟用 Anonymous (匿名登入) 功能";
                             break;
                         case 'auth/unauthorized-domain':
-                            errorMsg = "❌ 網域未授權！請至 Firebase ➔ Authentication ➔ Settings ➔ Authorized domains，新增「jakeyentw-art.github.io」授權。";
+                            details = "網域未獲授權，請在後台 Authorized domains 新增「jakeyentw-art.github.io」";
                             break;
                         case 'auth/invalid-api-key':
-                            errorMsg = "❌ 錯誤的金鑰：您填寫的 apiKey 無效，請檢查雲端同步設定。";
+                            details = "apiKey 金鑰無效，請重新設定";
                             break;
                         default:
-                            errorMsg = `❌ 連線錯誤 (${err.code}): ${err.message}`;
+                            details = `${err.code}: ${err.message}`;
                     }
                 } else if (err && err.message) {
-                    errorMsg = `❌ 連線錯誤: ${err.message}`;
+                    details = err.message;
                 }
-                
-                showToast(errorMsg, "error");
-                
-                // 將狀態列直接更新為錯誤原因，引導使用者點擊處理
-                const badge = document.getElementById('sync-badge');
-                if (badge) {
-                    badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all shadow-sm animate-pulse";
-                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 連線失敗 (點此查看設定與網域授權)`;
-                }
-
+                updateSyncBadge('error', details);
+                showToast(`⚠️ 雲端連線失敗: ${details}`, "error");
                 loadLocalFallback();
             }
         }
 
-        function updateSyncBadgeConnecting() {
+        function updateSyncBadge(status, details = "") {
             const badge = document.getElementById('sync-badge');
-            badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
-            badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> ⏳ 雲端同步連線中...`;
-        }
-
-        function updateSyncBadge(isCloud) {
-            const badge = document.getElementById('sync-badge');
-            if (isCloud) {
+            if (!badge) return;
+            
+            if (status === 'connecting') {
+                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> ⏳ 雲端同步連線中...`;
+            } else if (status === 'online') {
                 badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm cursor-pointer hover:bg-emerald-500/30 transition-all";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 雲端同步中 (多人協作模式)`;
-            } else {
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 雲端同步中 (多人即時協作中)`;
+            } else if (status === 'offline') {
                 badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 cursor-pointer hover:bg-slate-500/30 transition-all";
                 badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> ⚪ 本地離線儲存模式 (點此進行同步設定)`;
+            } else if (status === 'error') {
+                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all shadow-sm animate-pulse";
+                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 連線失敗：${details}`;
             }
         }
 
-        // 處理 Firestore 的安全規則/讀寫被拒
         function handleFirestoreError(err) {
             if (err && err.code === 'permission-denied') {
-                const errMsg = "❌ 雲端資料庫讀寫遭拒：請確認您的 Firestore Database 安全規則 (Rules) 是否已改為 allow read, write: if true; 並已發布！";
-                showToast(errMsg, "error");
-                
-                const badge = document.getElementById('sync-badge');
-                if (badge) {
-                    badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all";
-                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 資料庫規則拒絕存取`;
-                }
+                const errMsg = "請確認 Firestore Database 的 Rules 安全規則已改為 allow read, write: if true; 並且發布！";
+                updateSyncBadge('error', '資料庫規則拒絕存取');
+                showToast(`⚠️ ${errMsg}`, "error");
                 firebaseReady = false;
                 loadLocalFallback();
             }
@@ -557,7 +580,6 @@ const firebaseConfig = { ... }
         function setupRealtimeSync() {
             if (!firebaseReady || !db) return;
 
-            // ⭐️ 移除冗餘判斷，確保路徑在 SDK 內加載 100% 準確
             const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
             const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
 
@@ -605,23 +627,8 @@ const firebaseConfig = { ... }
         }
 
         // ==========================================
-        // 4. 極速前台繪製 (Optimistic High-Speed Rendering)
+        // 4. 前台秒級渲染 (Optimistic High-Speed Rendering)
         // ==========================================
-        function getLeaveStyle(val) {
-            if (!val) return { label: '💻 上班', bg: 'bg-slate-50 hover:bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
-            if (val === '全日休假') return { label: '🌴 全日休假', bg: 'bg-rose-100 hover:bg-rose-200', text: 'text-rose-700', border: 'border-rose-300' };
-            if (val.startsWith('上午休假')) {
-                return { label: val, bg: 'bg-emerald-50 hover:bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
-            }
-            if (val.startsWith('下午休假')) {
-                return { label: val, bg: 'bg-indigo-50 hover:bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' };
-            }
-            if (val.includes('端午節') || val.includes('國定假日') || val.includes('中秋節')) {
-                return { label: val, bg: 'bg-amber-100 hover:bg-amber-200', text: 'text-amber-700', border: 'border-amber-300' };
-            }
-            return { label: val, bg: 'bg-teal-50 hover:bg-teal-100', text: 'text-teal-800', border: 'border-teal-200' };
-        }
-
         function getRoleBadgeStyle(role) {
             if (!role) return 'bg-slate-100 text-slate-700 border-slate-200';
             const r = role.trim().toUpperCase();
@@ -1221,8 +1228,8 @@ const firebaseConfig = { ... }
         }
 
         function openConfigModal() {
-            const currentConfig = localStorage.getItem('custom_firebase_config') || '';
-            const currentAppId = localStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
+            const currentConfig = safeStorage.getItem('custom_firebase_config') || '';
+            const currentAppId = safeStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
             
             document.getElementById('firebase-config-input').value = currentConfig;
             document.getElementById('app-id-input').value = currentAppId;
@@ -1256,7 +1263,7 @@ const firebaseConfig = { ... }
             }
 
             try {
-                // 🧠 智慧清洗機制
+                // 智慧清洗
                 let cleanStr = configInput.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
                 if (cleanStr.includes('{') && cleanStr.includes('}')) {
                     cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
@@ -1272,7 +1279,6 @@ const firebaseConfig = { ... }
                     throw new Error("缺少必要的 'apiKey' 或 'projectId' 欄位。");
                 }
 
-                // 重新封裝
                 const standardConfig = {
                     apiKey: String(parsedConfig.apiKey || '').trim(),
                     authDomain: String(parsedConfig.authDomain || '').trim(),
@@ -1282,8 +1288,8 @@ const firebaseConfig = { ... }
                     appId: String(parsedConfig.appId || '').trim()
                 };
 
-                localStorage.setItem('custom_firebase_config', JSON.stringify(standardConfig));
-                localStorage.setItem('custom_app_id', appIdInput);
+                safeStorage.setItem('custom_firebase_config', JSON.stringify(standardConfig));
+                safeStorage.setItem('custom_app_id', appIdInput);
                 showToast('雲端設定儲存成功！正在重新啟動...');
                 setTimeout(() => {
                     window.location.reload();
@@ -1306,8 +1312,8 @@ const firebaseConfig = { ... }
 
         function clearConfig() {
             if (confirm('確定要移除此網頁的雲端連結嗎？移除後將回到單機離線儲存。')) {
-                localStorage.removeItem('custom_firebase_config');
-                localStorage.removeItem('custom_app_id');
+                safeStorage.removeItem('custom_firebase_config');
+                safeStorage.removeItem('custom_app_id');
                 showToast('已回到單機離線模式，正在重啟...');
                 setTimeout(() => {
                     window.location.reload();
