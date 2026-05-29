@@ -295,15 +295,18 @@
             <div class="p-6 space-y-4">
                 <div>
                     <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">📡 雲端金鑰 Firebase Config (JSON 格式)</label>
-                    <textarea id="firebase-config-input" rows="6" placeholder='請貼上您在 Firebase Console 產生的 web app config，例如：
+                    <textarea id="firebase-config-input" rows="6" placeholder='請直接貼上您在 Firebase Console 產生的整段 SDK Config 代碼，
+不論是：
+const firebaseConfig = { ... }
+或者
 {
   "apiKey": "AIzaSy...",
-  "authDomain": "csa-leave.firebaseapp.com",
-  "projectId": "csa-leave",
-  "storageBucket": "csa-leave.appspot.com",
-  "messagingSenderId": "123456",
-  "appId": "1:123:web:abc"
-}' class="w-full p-3 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none scrollbar-thin bg-slate-50"></textarea>
+  "projectId": "..."
+}
+系統皆會智慧辨識！' class="w-full p-3 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none scrollbar-thin bg-slate-50"></textarea>
+                    
+                    <!-- 內嵌錯誤資訊提示區塊 (替代瀏覽器 Alert) -->
+                    <p id="config-error" class="text-rose-500 text-xs bg-rose-50 border border-rose-100 rounded-xl p-3.5 mt-2.5 hidden font-semibold leading-relaxed whitespace-pre-line"></p>
                 </div>
 
                 <div>
@@ -358,7 +361,7 @@
             { id: '1', role: 'Director', name: 'Joie', leaves: { '06/15(一)': '全日休假', '06/19(五)': '端午節', '06/30(二)': '端午節' } },
             { id: '2', role: 'BI', name: 'Peggy', leaves: { '05/27(三)': '上午休假2小時', '05/28(四)': '全日休假', '06/02(二)': '下午休假3小時' } },
             { id: '3', role: 'BI', name: 'Daisy', leaves: { '05/29(五)': '下午休假3小時', '06/12(五)': '全日休假' } },
-            { id: '4', role: 'REM', name: 'Shaun', leaves: { '06/04(過)': '全日休假', '06/09(二)': '全日休假' } },
+            { id: '4', role: 'REM', name: 'Shaun', leaves: { '06/04(四)': '全日休假', '06/09(二)': '全日休假' } },
             { id: '5', role: 'Trainer', name: 'Marvel', leaves: { '06/01(一)': '上午休假4小時' } },
             { id: '6', role: 'Trainer', name: 'Megan', leaves: { '06/15(一)': '上午休假2小時', '06/16(二)': '下午休假4小時' } },
             { id: '7', role: 'DSM', name: 'Jake', leaves: { '05/29(五)': '全日休假', '06/12(五)': '全日休假', '06/25(四)': '全日休假' } },
@@ -367,7 +370,6 @@
             { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '下午休假4小時', '05/29(五)': '全日休假' } }
         ];
 
-        // 核心防呆函數：確保任何進入系統的同仁資料結構都是完整、絕不崩潰的
         function sanitizeEmployees(rawEmployees) {
             if (!Array.isArray(rawEmployees)) return INITIAL_EMPLOYEES;
             return rawEmployees.map(emp => {
@@ -395,17 +397,17 @@
             document.getElementById('today-display').innerText = getFullTodayDisplay();
             renderLegend();
             
-            // ⭐️ 第一步：0秒即刻先由本地快取渲染（確保網頁在任何網路下都能一瞬間打開！）
+            // 第一步：先由本地快取渲染（確保網頁能在一瞬間打開！）
             loadLocalFallback();
 
-            // ⭐️ 第二步：背景安靜嘗試雲端同步連線
+            // 第二步：背景安靜嘗試雲端同步連線
             runAuthAndSync();
         };
 
         function generateDatesFor2026() {
             const dates = [];
-            const start = new Date(2026, 4, 1); // 5月
-            const end = new Date(2026, 11, 31); // 12月
+            const start = new Date(2026, 4, 1); 
+            const end = new Date(2026, 11, 31); 
             const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
             
             let current = new Date(start);
@@ -446,7 +448,6 @@
         // 3. 雲端資料庫安全同步（Compat 協議防阻擋）
         // ==========================================
         async function runAuthAndSync() {
-            // 檢查 Firebase 的 UMD 腳本是否被瀏覽器的廣告阻擋插件/公司防護網封鎖
             if (typeof firebase === 'undefined') {
                 console.warn("偵測到 Firebase SDK 載入受阻（可能受廣告屏蔽插件或內網影響），系統將切換至 [本機離線安全模式]");
                 firebaseReady = false;
@@ -456,14 +457,12 @@
 
             let activeConfigStr = localStorage.getItem('custom_firebase_config');
             if (!activeConfigStr) {
-                // 如果用戶尚未設定雲端，保持安全的本地模式，並更新狀態列
                 firebaseReady = false;
                 updateSyncBadge(false);
                 return;
             }
 
             try {
-                // 初始化
                 const firebaseConfig = JSON.parse(activeConfigStr);
                 if (firebase.apps.length === 0) {
                     firebase.initializeApp(firebaseConfig);
@@ -474,7 +473,6 @@
 
                 updateSyncBadgeConnecting();
 
-                // 認證 (Rule 3)
                 auth.signInAnonymously().then((userCredential) => {
                     if (userCredential.user) {
                         updateSyncBadge(true);
@@ -511,14 +509,9 @@
         function setupRealtimeSync() {
             if (!firebaseReady || !db) return;
 
-            // 取得對應 Workspace 實體路徑 (Rule 1)
-            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').document ? 
-                db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates') :
-                db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
-
+            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
             const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
 
-            // 監聽日期
             datesDocRef.onSnapshot((docSnap) => {
                 if (docSnap.exists) {
                     dateList = docSnap.data().dates || generateDatesFor2026();
@@ -529,7 +522,6 @@
                 renderAll();
             }, (err) => console.error("日期同步異常:", err));
 
-            // 監聽同仁資料 (Rule 2)
             empColRef.onSnapshot((querySnap) => {
                 const tempEmployees = [];
                 querySnap.forEach((doc) => {
@@ -542,7 +534,6 @@
                 if (tempEmployees.length > 0) {
                     employees = sanitizeEmployees(tempEmployees);
                 } else {
-                    // 初始化種子
                     employees = sanitizeEmployees(INITIAL_EMPLOYEES);
                     INITIAL_EMPLOYEES.forEach((emp) => {
                         empColRef.doc(emp.id).set({
@@ -640,7 +631,6 @@
             document.getElementById('stat-bar').style.width = `${rate}%`;
             document.getElementById('stat-leave').innerText = `${onLeaveToday} 位成員`;
 
-            // 置頂凍結 (Sticky)
             const headerRow = document.getElementById('table-headers');
             let headerHtml = `
                 <th class="sticky left-0 top-0 z-40 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600">職務</th>
@@ -699,7 +689,7 @@
                 tableBody.innerHTML = `
                     <tr>
                         <td colSpan="${filteredDates.length + 4}" class="p-12 text-center text-slate-400">
-                            🔍 找不到符合條件的 CSA 同仁資料
+                            🔍 找不到符合條件 of CSA 同仁資料
                         </td>
                     </tr>
                 `;
@@ -789,7 +779,6 @@
             if (!selectedCell) return;
             const { empId, date } = selectedCell;
 
-            // A. 前台樂觀變更 (0秒即時反映！)
             employees = employees.map(emp => {
                 if (emp.id === empId) {
                     const updatedLeaves = { ...(emp.leaves || {}) };
@@ -805,7 +794,6 @@
             renderAll();
             calculateStats();
 
-            // B. 異步同步至雲端/本地
             if (firebaseReady && db && auth && auth.currentUser) {
                 const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
                 const emp = employees.find(e => e.id === empId);
@@ -815,7 +803,7 @@
                         role: emp.role,
                         leaves: emp.leaves
                     }).catch(err => {
-                        console.error("雲端暫時中斷，切為本地快取備份:", err);
+                        console.error("Firestore 同步失敗:", err);
                         saveData();
                     });
                 }
@@ -883,9 +871,6 @@
             }
         }
 
-        // ==========================================
-        // 6. 其他 UI / 大數據分析與匯入匯出
-        // ==========================================
         function toggleAddForm() {
             const form = document.getElementById('add-form');
             form.classList.toggle('hidden');
@@ -1191,6 +1176,13 @@
             document.getElementById('firebase-config-input').value = currentConfig;
             document.getElementById('app-id-input').value = currentAppId;
             
+            // 開啟時重設隱藏錯誤資訊
+            const errorEl = document.getElementById('config-error');
+            if (errorEl) {
+                errorEl.classList.add('hidden');
+                errorEl.innerText = '';
+            }
+            
             document.getElementById('config-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4";
         }
 
@@ -1201,21 +1193,65 @@
         function saveConfig() {
             const configInput = document.getElementById('firebase-config-input').value.trim();
             const appIdInput = document.getElementById('app-id-input').value.trim() || 'csa-leave-manager-2026';
+            const errorEl = document.getElementById('config-error');
 
-            if (configInput) {
-                try {
-                    JSON.parse(configInput);
-                    localStorage.setItem('custom_firebase_config', configInput);
-                    localStorage.setItem('custom_app_id', appIdInput);
-                    showToast('雲端設定儲存成功！正在重新啟動...');
-                    setTimeout(() => {
-                        window.location.reload();
-                    }, 1000);
-                } catch (e) {
-                    alert('❌ Firebase Config 格式有誤，必須是完整的 JSON 物件。');
+            if (errorEl) {
+                errorEl.classList.add('hidden');
+                errorEl.innerText = '';
+            }
+
+            if (!configInput) {
+                showConfigError('⚠️ 請貼入有效的 Firebase Config 內容。');
+                return;
+            }
+
+            try {
+                // 🧠 智慧清洗機制：移除註解，抓取中括號 { ... } 內容
+                let cleanStr = configInput.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
+                if (cleanStr.includes('{') && cleanStr.includes('}')) {
+                    cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
                 }
+                
+                // 使用 Function 沙盒做彈性語意分析 (解決無雙引號、單引號、末尾逗號與分號等 JavaScript 語法特徵)
+                const parsedConfig = (new Function(`return (${cleanStr})`))();
+
+                if (!parsedConfig || typeof parsedConfig !== 'object') {
+                    throw new Error("提取出來的設定不是一個有效的 JavaScript 物件字面量。");
+                }
+
+                if (!parsedConfig.apiKey || !parsedConfig.projectId) {
+                    throw new Error("缺少必要的 'apiKey' 或 'projectId' 欄位。");
+                }
+
+                // 洗滌格式，重新包裝成標準 JSON 儲存，保障 Firebase 完全認得！
+                const standardConfig = {
+                    apiKey: String(parsedConfig.apiKey || '').trim(),
+                    authDomain: String(parsedConfig.authDomain || '').trim(),
+                    projectId: String(parsedConfig.projectId || '').trim(),
+                    storageBucket: String(parsedConfig.storageBucket || '').trim(),
+                    messagingSenderId: String(parsedConfig.messagingSenderId || '').trim(),
+                    appId: String(parsedConfig.appId || '').trim()
+                };
+
+                localStorage.setItem('custom_firebase_config', JSON.stringify(standardConfig));
+                localStorage.setItem('custom_app_id', appIdInput);
+                showToast('雲端設定儲存成功！正在重新啟動...');
+                setTimeout(() => {
+                    window.location.reload();
+                }, 1000);
+
+            } catch (e) {
+                showConfigError(`❌ 設定解析失敗：${e.message}\n\n【提示】請回到您的 Firebase 控制台，找到像這樣的程式碼塊：\nconst firebaseConfig = { ... };\n然後「整段直接複製」貼到上方即可，本系統的智慧解譯器會自動幫您轉化！`);
+            }
+        }
+
+        function showConfigError(msg) {
+            const errorEl = document.getElementById('config-error');
+            if (errorEl) {
+                errorEl.innerText = msg;
+                errorEl.classList.remove('hidden');
             } else {
-                alert('⚠️ 請貼入有效的 Config 金鑰。');
+                alert(msg);
             }
         }
 
@@ -1230,9 +1266,23 @@
             }
         }
 
-        // ==========================================
-        // 7. 將所有點擊事件綁定至全域 window 物件以利 HTML onclick 呼叫
-        // ==========================================
+        function showToast(message, type = "success") {
+            const toast = document.getElementById('toast');
+            const text = document.getElementById('toast-text');
+            text.innerText = message;
+            toast.className = `fixed top-6 right-6 z-50 p-4 flex items-center gap-3 border rounded-2xl shadow-xl transition-all duration-300 ${
+                type === "error" ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"
+            }`;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('opacity-100', 'translate-y-0');
+            }, 10);
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3000);
+        }
+
         window.resetData = resetData;
         window.setMonthFilter = setMonthFilter;
         window.setViewMode = setViewMode;
