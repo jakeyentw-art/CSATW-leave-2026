@@ -1,0 +1,1072 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>2026 CSA 員工休假管理系統 (全年度)</title>
+    <!-- 載入外觀樣式庫 Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* 專屬滾動條美化 */
+        .scrollbar-thin::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-track {
+            background: #f1f5f9;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 3px;
+        }
+        .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 font-sans min-h-screen flex flex-col antialiased">
+
+    <!-- 頂部系統列 -->
+    <header class="bg-gradient-to-r from-teal-800 via-teal-700 to-slate-800 text-white shadow-md px-6 py-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+        <div class="flex items-center gap-3">
+            <span class="p-2 bg-teal-600/50 backdrop-blur rounded-xl text-xl">📅</span>
+            <div>
+                <h1 class="text-2xl font-bold tracking-tight">2026 CSA 員工休假管理系統</h1>
+            </div>
+        </div>
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
+            <div class="bg-white/10 px-4 py-2 rounded-xl text-sm border border-white/10 backdrop-blur flex items-center justify-between gap-3">
+                <span class="text-teal-300 font-medium">今天時間線:</span>
+                <span id="today-display" class="font-semibold text-white">載入中...</span>
+            </div>
+            <button onclick="resetData()" class="px-3.5 py-2 text-teal-200 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2">
+                🔄 重設範本
+            </button>
+        </div>
+    </header>
+
+    <!-- 通知提示框 -->
+    <div id="toast" class="fixed top-6 right-6 z-50 hidden transition-all duration-300 transform translate-y-[-20px] opacity-0">
+        <div class="shadow-xl rounded-2xl p-4 flex items-center gap-3 border bg-emerald-50 border-emerald-200 text-emerald-800">
+            <span class="text-lg">✅</span>
+            <p id="toast-text" class="text-sm font-semibold"></p>
+        </div>
+    </div>
+
+    <!-- 數據主視窗 -->
+    <main class="flex-1 p-4 md:p-6 max-w-[1600px] w-full mx-auto space-y-6">
+        
+        <!-- 1. 頂部數據看板 -->
+        <section class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-12 h-12 bg-teal-50 rounded-xl flex items-center justify-center text-2xl text-teal-600">👥</div>
+                <div>
+                    <p class="text-xs text-slate-400 font-medium">CSA 團隊人數</p>
+                    <h3 id="stat-total" class="text-2xl font-bold text-slate-800">0 位成員</h3>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-12 h-12 bg-emerald-50 rounded-xl flex items-center justify-center text-2xl text-emerald-600">📊</div>
+                <div class="flex-1">
+                    <p class="text-xs text-slate-400 font-medium">今日出勤率 (<span id="stat-date-label">--/--</span>)</p>
+                    <div class="flex items-baseline gap-1.5">
+                        <span id="stat-rate" class="text-2xl font-bold text-slate-800">0%</span>
+                        <span id="stat-working" class="text-xs text-slate-500">(0/0)</span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-1.5 rounded-full mt-2 overflow-hidden">
+                        <div id="stat-bar" class="bg-emerald-500 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-12 h-12 bg-rose-50 rounded-xl flex items-center justify-center text-2xl text-rose-600">✈️</div>
+                <div>
+                    <p class="text-xs text-slate-400 font-medium">今日請假/休假人數</p>
+                    <h3 id="stat-leave" class="text-2xl font-bold text-rose-600">0 位成員</h3>
+                </div>
+            </div>
+
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 flex items-center gap-4">
+                <div class="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-2xl text-amber-600">💡</div>
+                <div>
+                    <p class="text-xs text-slate-400 font-medium">安全警戒機制</p>
+                    <h3 class="text-sm font-semibold text-slate-700">單日 &gt; 3 人休假自動標示</h3>
+                    <p class="text-[11px] text-amber-600 mt-1">團隊人力缺口警戒</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. 控制與篩選面板 -->
+        <section class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+            <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                
+                <div class="flex flex-wrap items-center gap-3 w-full lg:w-auto">
+                    <div class="relative flex-1 sm:flex-initial">
+                        <span class="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm">🔍</span>
+                        <input 
+                            type="text" 
+                            id="search-input"
+                            oninput="renderAll()"
+                            placeholder="搜尋職務或同仁姓名..."
+                            class="pl-10 pr-4 py-2 w-full sm:w-64 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none transition-all"
+                        />
+                    </div>
+
+                    <select
+                        id="role-filter"
+                        onchange="renderAll()"
+                        class="px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-600 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                    >
+                        <option value="All">所有職務</option>
+                    </select>
+                </div>
+
+                <div class="flex flex-wrap items-center gap-2 w-full lg:w-auto">
+                    <label class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-teal-500 hover:text-teal-600 rounded-xl text-sm font-medium text-slate-600 cursor-pointer shadow-sm transition-all">
+                        📥 匯入原本 CSV
+                        <input type="file" accept=".csv" onchange="handleFileUpload(event)" class="hidden" />
+                    </label>
+
+                    <button onclick="handleExportCsv()" class="flex items-center gap-2 px-4 py-2 bg-white border border-slate-200 hover:border-teal-500 hover:text-teal-600 rounded-xl text-sm font-medium text-slate-600 shadow-sm transition-all">
+                        📤 匯出最新 CSV
+                    </button>
+
+                    <button onclick="toggleAddForm()" class="flex items-center gap-2 px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-sm font-semibold shadow-md transition-all ml-auto lg:ml-0">
+                        ➕ 新增團隊同仁
+                    </button>
+                </div>
+            </div>
+
+            <!-- 月份快速切換頁籤 (橫向滾動) -->
+            <div class="border-t border-slate-100 pt-3">
+                <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">📅 快速切換月份看板 (點選切換)</label>
+                <div id="month-tabs-container" class="flex gap-1.5 overflow-x-auto pb-1 scrollbar-thin">
+                    <!-- JS 動態生成 5 月 ~ 12 月的切換按鈕 -->
+                </div>
+            </div>
+
+            <!-- 新增同仁的隱藏表單 -->
+            <div id="add-form" class="hidden p-4 bg-teal-50/50 rounded-2xl border border-teal-100 flex flex-wrap gap-4 items-end animate-fadeIn">
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-xs font-bold text-teal-800 mb-1.5">同仁姓名 *</label>
+                    <input type="text" id="new-name" placeholder="例如: Daisy" class="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none" />
+                </div>
+                <div class="flex-1 min-w-[200px]">
+                    <label class="block text-xs font-bold text-teal-800 mb-1.5">職務部門 (如: Director, BI, Trainer)</label>
+                    <input type="text" id="new-role" placeholder="例如: BI, Trainer, DSM" class="w-full px-3.5 py-2 bg-white border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none" />
+                </div>
+                <div class="flex gap-2">
+                    <button type="button" onclick="handleAddEmployee()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl shadow-md transition-all">確認建立</button>
+                    <button type="button" onclick="toggleAddForm()" class="px-4 py-2 bg-slate-200 text-slate-600 text-sm font-semibold rounded-xl transition-all">取消</button>
+                </div>
+            </div>
+
+            <!-- 圖例與提示 -->
+            <div class="pt-2 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 text-xs text-slate-500">
+                <div class="flex flex-wrap items-center gap-x-4 gap-y-2">
+                    <span class="font-semibold text-slate-700">📌 表格狀態說明：</span>
+                    <div id="legend-container" class="flex flex-wrap items-center gap-2">
+                        <!-- 動態生成圖例 -->
+                    </div>
+                </div>
+                <div class="flex items-center gap-3">
+                    <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 bg-sky-100 border border-sky-300 rounded"></span> 週六</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 bg-rose-100 border border-rose-300 rounded"></span> 週日</span>
+                    <span class="inline-flex items-center gap-1"><span class="w-2.5 h-2.5 bg-amber-100 border border-amber-300 rounded"></span> 2026台灣國定假日</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 3. 核心數據表格 -->
+        <section class="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+            <div class="p-4 bg-slate-50 border-b border-slate-100 flex justify-between items-center flex-wrap gap-2">
+                <div class="flex items-center gap-2">
+                    <span class="w-2.5 h-2.5 bg-teal-600 rounded-full"></span>
+                    <h2 class="font-bold text-slate-700">2026年 5/25 ~ 12/31 全年度休假一覽總表</h2>
+                </div>
+                <div class="flex bg-slate-200 p-0.5 rounded-lg text-xs">
+                    <button onclick="setViewMode('timeline')" id="btn-view-timeline" class="px-3 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition-all">📊 網格排班表</button>
+                    <button onclick="setViewMode('stats')" id="btn-view-stats" class="px-3 py-1 rounded-md font-semibold text-slate-500 transition-all">📈 大數據儀表板</button>
+                </div>
+            </div>
+
+            <!-- 網格排班表區塊 (設定固定高度以利「置頂凍結日期」) -->
+            <div id="view-timeline-box" class="max-h-[620px] overflow-auto relative scrollbar-thin border-b border-slate-100">
+                <table class="w-full text-left border-collapse table-fixed">
+                    <thead>
+                        <tr id="table-headers" class="bg-slate-50/50 border-b border-slate-100 text-[11px] text-slate-500 uppercase tracking-wider">
+                            <!-- JS 動態插入標頭 -->
+                        </tr>
+                    </thead>
+                    <tbody id="table-body" class="divide-y divide-slate-100 text-sm">
+                        <!-- JS 動態插入同仁資料 -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- 大數據統計區塊 -->
+            <div id="view-stats-box" class="hidden p-6 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                
+                <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200/60">
+                    <h3 class="font-bold text-slate-700 text-sm mb-4">📊 休假種類比例分佈</h3>
+                    <div id="stats-types-list" class="space-y-3">
+                        <!-- JS 動態計算假別比例 -->
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200/60">
+                    <h3 class="font-bold text-slate-700 text-sm mb-4">🏆 同仁累計請假天/次排行</h3>
+                    <div id="stats-rank-list" class="space-y-3.5">
+                        <!-- JS 動態計算排行 -->
+                    </div>
+                </div>
+
+                <div class="bg-slate-50 rounded-2xl p-5 border border-slate-200/60 lg:col-span-1 md:col-span-2">
+                    <h3 class="font-bold text-slate-700 text-sm mb-4">🚨 同日休假人數警戒 (單日 &gt; 3 人)</h3>
+                    <div id="stats-alert-list" class="space-y-3 max-h-56 overflow-y-auto pr-2 scrollbar-thin">
+                        <!-- JS 動態警報 -->
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- 4. 點選儲存格之簡易彈出視窗 (Modal) -->
+    <div id="edit-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform transition-all">
+            <div class="bg-gradient-to-r from-teal-700 to-teal-800 text-white p-6">
+                <div class="flex justify-between items-center">
+                    <h3 class="text-lg font-bold">🖊️ 變更請假狀態</h3>
+                    <button onclick="closeModal()" class="text-white hover:text-white/80 text-xl font-medium">✕</button>
+                </div>
+                <div class="mt-3 flex items-center gap-2 text-sm text-teal-100">
+                    <span id="modal-date" class="px-2 py-0.5 bg-teal-600/50 rounded text-xs font-bold">日期</span>
+                    <span>•</span>
+                    <span id="modal-name" class="font-semibold text-white">姓名</span>
+                </div>
+            </div>
+            <div class="p-6 space-y-5">
+                <div id="modal-buttons">
+                    <!-- JS 動態生成假別與時段混合選擇按鈕 -->
+                </div>
+                <div class="pt-4 border-t border-slate-100">
+                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">✍️ 自訂請假備註</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="custom-leave-input" placeholder="例如: 颱風假, 補休" class="flex-1 px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none" />
+                        <button onclick="saveCustomLeave()" class="px-4 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl transition-all">儲存</button>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-slate-50 px-6 py-4 flex justify-end border-t border-slate-100">
+                <button onclick="closeModal()" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-semibold">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 頁尾 -->
+    <footer class="bg-slate-800 text-slate-400 text-center py-6 text-xs border-t border-slate-700 mt-auto">
+        <p>© 2026 CSA 團隊排班與休假管理系統. 100% 本機端極速全年度版.</p>
+        <p class="mt-1 text-slate-500">本系統不需架設伺服器，資料將自動儲存在您這台電腦的瀏覽器中。</p>
+    </footer>
+
+    <!-- 頁面主邏輯 (使用原生標準 JavaScript) -->
+    <script>
+        // 取得當天日期在系統對應的 "MM/DD(W)" 格式字串
+        function getTodayStr() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            const d = String(now.getDate()).padStart(2, '0');
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const w = weekdays[now.getDay()];
+            return `${m}/${d}(${w})`;
+        }
+
+        // 取得頂部詳細日期顯示字串
+        function getFullTodayDisplay() {
+            const now = new Date();
+            const y = now.getFullYear();
+            const m = now.getMonth() + 1;
+            const d = now.getDate();
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            const w = weekdays[now.getDay()];
+            return `${y}年${m}月${d}日 (${w})`;
+        }
+
+        // 根據當前月份自動判定預設看板月份（若非 5~12 月，則預設回 5 月）
+        function getDefaultMonthFilter() {
+            const now = new Date();
+            const m = String(now.getMonth() + 1).padStart(2, '0');
+            if (['05', '06', '07', '08', '09', '10', '11', '12'].includes(m)) {
+                return m;
+            }
+            return '05';
+        }
+
+        // 1. 動態計算 2026 年 5 月 1 日 到 12 月 31 日的日期陣列
+        function generateDatesFor2026() {
+            const dates = [];
+            const start = new Date(2026, 4, 1); // JS月份從0開始，4代表5月
+            const end = new Date(2026, 11, 31); // 11代表12月
+            const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
+            
+            let current = new Date(start);
+            while (current <= end) {
+                const m = String(current.getMonth() + 1).padStart(2, '0');
+                const d = String(current.getDate()).padStart(2, '0');
+                const w = weekdays[current.getDay()];
+                dates.push(`${m}/${d}(${w})`);
+                current.setDate(current.getDate() + 1);
+            }
+            return dates;
+        }
+
+        // 2026 年台灣國定假日資料庫 (5月~12月)
+        const HOLIDAYS_2026 = {
+            '05/01': { name: '勞動節', type: 'TW' },
+            '06/19': { name: '端午節', type: 'TW' },
+            '09/25': { name: '中秋節', type: 'TW' },
+            '10/10': { name: '國慶日', type: 'TW' }
+        };
+
+        // 2. 基本假別渲染設定 (上班與全日)
+        const LEAVE_TYPES = {
+            '': { label: '💻 上班', bg: 'bg-slate-50 hover:bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' },
+            '全日休假': { label: '🌴 全日休假', bg: 'bg-rose-100 hover:bg-rose-200', text: 'text-rose-700', border: 'border-rose-300' },
+        };
+
+        // 依據字串獲取動態顏色與外觀
+        function getLeaveStyle(val) {
+            if (!val) return { label: '💻 上班', bg: 'bg-slate-50 hover:bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
+            if (val === '全日休假') return { label: '🌴 全日休假', bg: 'bg-rose-100 hover:bg-rose-200', text: 'text-rose-700', border: 'border-rose-300' };
+            if (val.startsWith('上午休假')) {
+                return { label: val, bg: 'bg-emerald-50 hover:bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
+            }
+            if (val.startsWith('下午休假')) {
+                return { label: val, bg: 'bg-indigo-50 hover:bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' };
+            }
+            if (val.includes('端午節') || val.includes('國定假日') || val.includes('中秋節')) {
+                return { label: val, bg: 'bg-amber-100 hover:bg-amber-200', text: 'text-amber-700', border: 'border-amber-300' };
+            }
+            // 自訂假別 fallback 配色
+            return { label: val, bg: 'bg-teal-50 hover:bg-teal-100', text: 'text-teal-800', border: 'border-teal-200' };
+        }
+
+        // 根據職務類別提供專屬配色
+        function getRoleBadgeStyle(role) {
+            if (!role) return 'bg-slate-100 text-slate-700 border-slate-200';
+            const r = role.trim().toUpperCase();
+            switch (r) {
+                case 'DIRECTOR':
+                    return 'bg-rose-100 text-rose-800 border border-rose-200';
+                case 'BI':
+                    return 'bg-sky-100 text-sky-800 border border-sky-200';
+                case 'REM':
+                    return 'bg-violet-100 text-violet-800 border border-violet-200';
+                case 'TRAINER':
+                    return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
+                case 'DSM':
+                    return 'bg-amber-100 text-amber-800 border border-amber-200';
+                case 'QA':
+                    return 'bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200';
+                case 'SUPPORT':
+                    return 'bg-teal-100 text-teal-800 border border-teal-200';
+                default:
+                    return 'bg-slate-100 text-slate-700 border border-slate-200';
+            }
+        }
+
+        // 3. 初始預設員工資料 (已更新為最新設計的時段小時請假)
+        const INITIAL_EMPLOYEES = [
+            { id: '1', role: 'Director', name: 'Joie', leaves: { '06/15(一)': '全日休假', '06/19(五)': '端午節', '06/30(二)': '端午節' } },
+            { id: '2', role: 'BI', name: 'Peggy', leaves: { '05/27(三)': '上午休假2小時', '05/28(四)': '全日休假', '06/02(二)': '下午休假3小時' } },
+            { id: '3', role: 'BI', name: 'Daisy', leaves: { '05/29(五)': '下午休假3小時', '06/12(五)': '全日休假' } },
+            { id: '4', role: 'REM', name: 'Shaun', leaves: { '06/04(四)': '全日休假', '06/09(二)': '全日休假' } },
+            { id: '5', role: 'Trainer', name: 'Marvel', leaves: { '06/01(一)': '上午休假4小時' } },
+            { id: '6', role: 'Trainer', name: 'Megan', leaves: { '06/15(一)': '上午休假2小時', '06/16(二)': '下午休假4小時' } },
+            { id: '7', role: 'DSM', name: 'Jake', leaves: { '05/29(五)': '全日休假', '06/12(五)': '全日休假', '06/25(四)': '全日休假' } },
+            { id: '8', role: 'DSM', name: 'Alvin', leaves: { '06/19(五)': '端午節', '06/22(一)': '全日休假' } },
+            { id: '9', role: 'QA', name: 'Fiona', leaves: { '06/05(五)': '下午休假4小時' } },
+            { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '下午休假4小時', '05/29(五)': '全日休假' } }
+        ];
+
+        // 4. 全域變數狀態管理
+        let employees = JSON.parse(localStorage.getItem('csa_leaves_2026')) || INITIAL_EMPLOYEES;
+        let dateList = generateDatesFor2026();
+        let monthFilter = getDefaultMonthFilter(); 
+        let viewMode = 'timeline'; 
+        let selectedCell = null; 
+        let currentPeriod = '上午'; // 新增/編輯彈出視窗中的當前 AM/PM 選擇狀態
+        
+        const TODAY_STR = getTodayStr();
+
+        // 5. 初始化頁面
+        window.onload = function() {
+            document.getElementById('today-display').innerText = getFullTodayDisplay();
+            renderLegend();
+            renderRoleDropdown();
+            renderMonthTabs();
+            renderAll();
+        };
+
+        // 顯示通知訊息
+        function showToast(message) {
+            const toast = document.getElementById('toast');
+            document.getElementById('toast-text').innerText = message;
+            toast.classList.remove('hidden');
+            setTimeout(() => {
+                toast.classList.add('opacity-100', 'translate-y-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                setTimeout(() => toast.classList.add('hidden'), 300);
+            }, 3000);
+        }
+
+        // 儲存資料到 LocalStorage
+        function saveData() {
+            localStorage.setItem('csa_leaves_2026', JSON.stringify(employees));
+        }
+
+        // 重設預設資料
+        function resetData() {
+            if (confirm('確定要還原成初始乾淨預設資料嗎？這會覆蓋您目前的修改。')) {
+                employees = INITIAL_EMPLOYEES;
+                dateList = generateDatesFor2026();
+                saveData();
+                renderRoleDropdown();
+                renderAll();
+                showToast('資料已重設為範本狀態！');
+            }
+        }
+
+        // 動態渲染 5月 ~ 12月的切換按鈕
+        function renderMonthTabs() {
+            const container = document.getElementById('month-tabs-container');
+            const months = [
+                { id: 'All', label: '📊 顯示全年度' },
+                { id: '05', label: '5 月' },
+                { id: '06', label: '6 月' },
+                { id: '07', label: '7 月' },
+                { id: '08', label: '8 月' },
+                { id: '09', label: '9 月' },
+                { id: '10', label: '10 月' },
+                { id: '11', label: '11 月' },
+                { id: '12', label: '12 月' },
+            ];
+
+            let html = '';
+            months.forEach(m => {
+                const isActive = monthFilter === m.id;
+                const btnClass = isActive 
+                    ? "px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold shadow-md shrink-0 transition-all"
+                    : "px-4 py-2 bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold shrink-0 transition-all";
+                
+                html += `
+                    <button onclick="setMonthFilter('${m.id}')" id="tab-month-${m.id}" class="${btnClass}">
+                        ${m.label}
+                    </button>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        // 切換月份狀態
+        function setMonthFilter(month) {
+            monthFilter = month;
+            renderMonthTabs(); 
+            renderAll();
+        }
+
+        // 切換排班/統計視圖
+        function setViewMode(mode) {
+            viewMode = mode;
+            const timelineBox = document.getElementById('view-timeline-box');
+            const statsBox = document.getElementById('view-stats-box');
+            const btnTimeline = document.getElementById('btn-view-timeline');
+            const btnStats = document.getElementById('btn-view-stats');
+
+            if (mode === 'timeline') {
+                timelineBox.classList.remove('hidden');
+                statsBox.classList.add('hidden');
+                btnTimeline.className = "px-3 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition-all";
+                btnStats.className = "px-3 py-1 rounded-md font-semibold text-slate-500";
+            } else {
+                timelineBox.classList.add('hidden');
+                statsBox.classList.remove('hidden');
+                btnTimeline.className = "px-3 py-1 rounded-md font-semibold text-slate-500";
+                btnStats.className = "px-3 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition-all";
+                calculateStats();
+            }
+        }
+
+        // 生成分類圖例
+        function renderLegend() {
+            const container = document.getElementById('legend-container');
+            container.innerHTML = `
+                <span class="inline-flex items-center px-2 py-0.5 rounded border bg-slate-50 text-slate-600 border-slate-200">💻 上班</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded border bg-rose-100 text-rose-700 border-rose-300">🌴 全日休假</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded border bg-emerald-50 text-emerald-700 border-emerald-200">🌅 上午部份休</span>
+                <span class="inline-flex items-center px-2 py-0.5 rounded border bg-indigo-50 text-indigo-700 border-indigo-200">🌇 下午部份休</span>
+            `;
+        }
+
+        // 生成職務下拉選單
+        function renderRoleDropdown() {
+            const dropdown = document.getElementById('role-filter');
+            const allRoles = [...new Set(employees.map(e => e.role).filter(Boolean))];
+            dropdown.innerHTML = '<option value="All">所有職務</option>';
+            allRoles.forEach(role => {
+                dropdown.innerHTML += `<option value="${role}">${role}</option>`;
+            });
+        }
+
+        // 6. 主要渲染邏輯
+        function renderAll() {
+            const searchTerm = document.getElementById('search-input').value.toLowerCase();
+            const roleFilter = document.getElementById('role-filter').value;
+
+            // 過濾日期
+            const filteredDates = monthFilter === 'All' 
+                ? dateList 
+                : dateList.filter(d => d.startsWith(monthFilter));
+
+            // 計算每日休假人數(警報用)
+            const dailyLeaveCounts = {};
+            filteredDates.forEach(date => {
+                let count = 0;
+                employees.forEach(emp => {
+                    const status = emp.leaves[date];
+                    if (status && status !== '國定假日' && status !== '端午節') {
+                        count++;
+                    }
+                });
+                dailyLeaveCounts[date] = count;
+            });
+
+            // 渲染看板今日出勤日期標籤
+            document.getElementById('stat-date-label').innerText = TODAY_STR.slice(0, 5);
+
+            // 渲染看板數據
+            let onLeaveToday = 0;
+            let workingToday = 0;
+            employees.forEach(emp => {
+                const status = emp.leaves[TODAY_STR];
+                if (!status) workingToday++;
+                else if (status !== '國定假日' && status !== '端午節') onLeaveToday++;
+            });
+            const rate = employees.length > 0 ? Math.round((workingToday / employees.length) * 100) : 0;
+            
+            document.getElementById('stat-total').innerText = `${employees.length} 位同仁`;
+            document.getElementById('stat-rate').innerText = `${rate}%`;
+            document.getElementById('stat-working').innerText = `(${workingToday}/${employees.length} 在崗)`;
+            document.getElementById('stat-bar').style.width = `${rate}%`;
+            document.getElementById('stat-leave').innerText = `${onLeaveToday} 位成員`;
+
+            // 渲染表格 Header (加入極致「凍結置頂」`sticky top-0`)
+            const headerRow = document.getElementById('table-headers');
+            let headerHtml = `
+                <th class="sticky left-0 top-0 z-40 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600">職務</th>
+                <th class="sticky left-28 top-0 z-40 bg-slate-50 p-3 w-28 font-bold border-r border-slate-100 text-slate-600 shadow-[2px_0_5px_rgba(0,0,0,0.03)]">同仁姓名</th>
+                <th class="sticky top-0 z-30 bg-slate-50 p-3 w-20 font-bold text-center border-r border-slate-100 text-slate-600">休假天數</th>
+            `;
+
+            filteredDates.forEach(date => {
+                const isSaturday = date.includes('六');
+                const isSunday = date.includes('日');
+                const isToday = date === TODAY_STR;
+                
+                // 檢查是否為 2026 國定假日
+                const dateKey = date.slice(0, 5); // 取得 "MM/DD"
+                const holiday = HOLIDAYS_2026[dateKey];
+                
+                const dailyCount = dailyLeaveCounts[date] || 0;
+
+                let thClass = '';
+                let holidayNameHtml = '';
+
+                // 顏色優先層級：今天 (Today) > 國定假日 > 星期日 > 星期六 > 平常日
+                if (isToday) {
+                    thClass = 'bg-teal-600 text-white z-30';
+                } else if (holiday) {
+                    thClass = 'bg-amber-100 text-amber-900 border-amber-300 font-black';
+                    holidayNameHtml = `<span class="text-[9px] text-amber-700 bg-amber-200/50 px-1 py-0.5 mt-0.5 rounded block truncate max-w-[56px]">${holiday.name}</span>`;
+                } else if (isSunday) {
+                    thClass = 'bg-rose-50 text-rose-800 border-rose-100';
+                } else if (isSaturday) {
+                    thClass = 'bg-sky-50 text-sky-800 border-sky-100';
+                } else {
+                    thClass = 'bg-slate-50 text-slate-700';
+                }
+
+                let alertDot = (dailyCount >= 3 && !isToday) ? '<span class="absolute -bottom-1 left-1/2 -translate-x-1/2 w-2 h-2 bg-amber-400 border border-white rounded-full"></span>' : '';
+
+                headerHtml += `
+                    <th class="sticky top-0 z-30 p-2.5 w-16 text-center text-xs font-bold transition-all border-r border-slate-100 ${thClass}" title="此日請假人數: ${dailyCount}人">
+                        <div class="flex flex-col items-center">
+                            <span>${date.slice(0, 5)}</span>
+                            <span class="text-[10px] opacity-85">${date.slice(5)}</span>
+                            ${holidayNameHtml}
+                            ${alertDot}
+                        </div>
+                    </th>
+                `;
+            });
+            headerHtml += `<th class="sticky top-0 z-30 bg-slate-50 w-16 p-3 text-center text-rose-500 font-bold">操作</th>`;
+            headerRow.innerHTML = headerHtml;
+
+            // 渲染表格內容 (職務、姓名加入 `sticky left-*` 雙向凍結)
+            const tableBody = document.getElementById('table-body');
+            const filteredEmployees = employees.filter(emp => {
+                const matchesSearch = emp.name.toLowerCase().includes(searchTerm) || emp.role.toLowerCase().includes(searchTerm);
+                const matchesRole = roleFilter === 'All' || emp.role === roleFilter;
+                return matchesSearch && matchesRole;
+            });
+
+            if (filteredEmployees.length === 0) {
+                tableBody.innerHTML = `
+                    <tr>
+                        <td colSpan="${filteredDates.length + 4}" class="p-12 text-center text-slate-400">
+                            🔍 找不到符合條件的 CSA 同仁資料
+                        </td>
+                    </tr>
+                `;
+                return;
+            }
+
+            let bodyHtml = '';
+            filteredEmployees.forEach(emp => {
+                // 計算休假次數 (排除已自動高亮標註的國定假日)
+                const takenCount = Object.entries(emp.leaves).filter(([d, val]) => {
+                    return val && val !== '國定假日' && val !== '端午節';
+                }).length;
+
+                const roleBadgeStyle = getRoleBadgeStyle(emp.role);
+
+                bodyHtml += `
+                    <tr class="hover:bg-slate-50/50 transition-colors">
+                        <td class="sticky left-0 z-10 bg-white p-3 font-semibold border-r border-slate-100 truncate">
+                            <span class="px-2 py-0.5 rounded-md text-xs font-bold ${roleBadgeStyle}">${emp.role || '未分配'}</span>
+                        </td>
+                        <td class="sticky left-28 z-10 bg-white p-3 font-bold text-slate-800 border-r border-slate-100 truncate shadow-[2px_0_5px_rgba(0,0,0,0.03)]">${emp.name}</td>
+                        <td class="p-3 text-center border-r border-slate-100 font-semibold text-slate-700 bg-white">
+                            <span class="px-2 py-1 rounded-full text-xs ${takenCount > 0 ? 'bg-amber-50 text-amber-700' : 'bg-slate-100 text-slate-400'}">${takenCount} 次</span>
+                        </td>
+                `;
+
+                filteredDates.forEach(date => {
+                    const val = emp.leaves[date] || '';
+                    const isSaturday = date.includes('六');
+                    const isSunday = date.includes('日');
+                    const isToday = date === TODAY_STR;
+                    
+                    const dateKey = date.slice(0, 5);
+                    const holiday = HOLIDAYS_2026[dateKey];
+                    
+                    const style = getLeaveStyle(val);
+
+                    // 欄位背景襯托
+                    let tdClass = '';
+                    if (isToday) {
+                        tdClass = 'bg-teal-50/40 ring-1 ring-teal-200 ring-inset';
+                    } else if (holiday) {
+                        tdClass = 'bg-amber-50/30';
+                    } else if (isSunday) {
+                        tdClass = 'bg-rose-50/10';
+                    } else if (isSaturday) {
+                        tdClass = 'bg-sky-50/10';
+                    } else {
+                        tdClass = 'bg-white';
+                    }
+
+                    // 表格儲存格縮寫以保持完美緊湊排版 (上·3小時 或 下·4小時)
+                    let displayedVal = val;
+                    if (val === '全日休假') {
+                        displayedVal = '全日';
+                    } else if (val.startsWith('上午休假')) {
+                        displayedVal = '上·' + val.replace('上午休假', '');
+                    } else if (val.startsWith('下午休假')) {
+                        displayedVal = '下·' + val.replace('下午休假', '');
+                    } else if (val.includes('小時')) {
+                        displayedVal = val.replace('休假', '');
+                    }
+
+                    let cellContent = val ? `
+                        <div class="w-full py-2 px-0.5 rounded-lg border text-[11px] font-extrabold flex items-center justify-center shadow-sm ${style.bg} ${style.text} ${style.border}" title="${val}">
+                            ${displayedVal}
+                        </div>
+                    ` : `<div class="w-full py-2 text-slate-300 opacity-0 group-hover:opacity-100 text-[10px]">+</div>`;
+
+                    bodyHtml += `
+                        <td onclick="openCellModal('${emp.id}', '${date}', '${val}')" class="p-1 text-center border-r border-slate-100 cursor-pointer relative group ${tdClass}">
+                            ${cellContent}
+                        </td>
+                    `;
+                });
+
+                bodyHtml += `
+                    <td class="p-3 text-center bg-white">
+                        <button onclick="handleDeleteEmployee('${emp.id}', '${emp.name}')" class="text-slate-400 hover:text-rose-600 p-1 text-xs">🗑️</button>
+                    </td>
+                    </tr>
+                `;
+            });
+
+            tableBody.innerHTML = bodyHtml;
+        }
+
+        // 7. 新增同仁功能
+        function toggleAddForm() {
+            const form = document.getElementById('add-form');
+            form.classList.toggle('hidden');
+        }
+
+        function handleAddEmployee() {
+            const name = document.getElementById('new-name').value.trim();
+            const role = document.getElementById('new-role').value.trim() || '未定義職務';
+
+            if (!name) {
+                alert('請輸入同仁姓名！');
+                return;
+            }
+
+            const newEmp = {
+                id: Date.now().toString(),
+                name: name,
+                role: role,
+                leaves: {}
+            };
+
+            employees.push(newEmp);
+            saveData();
+            document.getElementById('new-name').value = '';
+            document.getElementById('new-role').value = '';
+            toggleAddForm();
+            renderRoleDropdown();
+            renderAll();
+            showToast(`成功新增同仁: ${name}`);
+        }
+
+        // 8. 刪除同仁功能
+        function handleDeleteEmployee(id, name) {
+            if (confirm(`確定要將「${name}」從排班表中徹底移除嗎？`)) {
+                employees = employees.filter(emp => emp.id !== id);
+                saveData();
+                renderRoleDropdown();
+                renderAll();
+                showToast(`已成功移除同仁: ${name}`);
+            }
+        }
+
+        // 9. 彈出選單設定
+        function openCellModal(empId, date, currentValue) {
+            selectedCell = { empId, date };
+            const emp = employees.find(e => e.id === empId);
+            
+            document.getElementById('modal-date').innerText = date;
+            document.getElementById('modal-name').innerText = emp.name;
+            
+            // 如果當前值是特殊自訂值，則帶入輸入框
+            const isBuiltIn = currentValue === '' || currentValue === '全日休假' || currentValue.startsWith('上午休假') || currentValue.startsWith('下午休假');
+            document.getElementById('custom-leave-input').value = !isBuiltIn ? currentValue : '';
+
+            // 動態判斷當前編輯的時段
+            if (currentValue.startsWith('下午休假')) {
+                currentPeriod = '下午';
+            } else {
+                currentPeriod = '上午'; // 預設或上午
+            }
+
+            renderModalButtons(currentValue);
+            document.getElementById('edit-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4";
+        }
+
+        // 時段選擇更新
+        function setModalPeriod(period, currentValue) {
+            currentPeriod = period;
+            renderModalButtons(currentValue);
+        }
+
+        // 渲染 Modal 請假時數組合按鈕
+        function renderModalButtons(currentValue) {
+            const btnContainer = document.getElementById('modal-buttons');
+            
+            const activeClass = "ring-2 ring-teal-500 bg-white border-teal-300 font-bold shadow-sm text-teal-800";
+            const inactiveClass = "bg-slate-50 hover:bg-slate-100 text-slate-700 border-slate-200";
+
+            let html = `
+                <!-- 快捷選項 (上班 / 全日) -->
+                <div class="grid grid-cols-2 gap-2 mb-4">
+                    <button onclick="selectLeaveType('')" class="p-3 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 ${currentValue === '' ? activeClass : inactiveClass}">
+                        💻 上班 (清除)
+                    </button>
+                    <button onclick="selectLeaveType('全日休假')" class="p-3 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 ${currentValue === '全日休假' ? 'ring-2 ring-rose-500 bg-rose-50 border-rose-300 font-bold text-rose-700 shadow-sm' : inactiveClass}">
+                        🌴 全日休假
+                    </button>
+                </div>
+
+                <!-- 彈性時數請假標籤 -->
+                <div class="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1">
+                    <span>⏱️ 彈性時數與時段請假</span>
+                </div>
+
+                <!-- 選擇時段 AM / PM -->
+                <div class="grid grid-cols-2 gap-2 mb-3">
+                    <button onclick="setModalPeriod('上午', '${currentValue}')" class="p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 ${currentPeriod === '上午' ? 'bg-emerald-50 border-emerald-400 text-emerald-800 ring-2 ring-emerald-300' : 'bg-slate-50 text-slate-400 border-slate-200'}">
+                        🌅 上午 (AM)
+                    </button>
+                    <button onclick="setModalPeriod('下午', '${currentValue}')" class="p-2.5 rounded-xl border text-xs font-bold text-center flex items-center justify-center gap-1.5 ${currentPeriod === '下午' ? 'bg-indigo-50 border-indigo-400 text-indigo-800 ring-2 ring-indigo-300' : 'bg-slate-50 text-slate-400 border-slate-200'}">
+                        🌇 下午 (PM)
+                    </button>
+                </div>
+
+                <!-- 時數按鈕 grid (1 ~ 7小時) -->
+                <div class="grid grid-cols-3 gap-2">
+            `;
+
+            for (let h = 1; h <= 7; h++) {
+                const targetValue = `${currentPeriod}休假${h}小時`;
+                const isSelected = currentValue === targetValue;
+                html += `
+                    <button onclick="selectLeaveType('${targetValue}')" class="p-2 rounded-xl border text-xs font-semibold text-center transition-all ${isSelected ? activeClass : inactiveClass}">
+                        ${h} 小時
+                    </button>
+                `;
+            }
+
+            html += `</div>`;
+            btnContainer.innerHTML = html;
+        }
+
+        function selectLeaveType(value) {
+            if (!selectedCell) return;
+            const { empId, date } = selectedCell;
+
+            employees = employees.map(emp => {
+                if (emp.id === empId) {
+                    const updatedLeaves = { ...emp.leaves };
+                    if (value === '') {
+                        delete updatedLeaves[date];
+                    } else {
+                        updatedLeaves[date] = value;
+                    }
+                    return { ...emp, leaves: updatedLeaves };
+                }
+                return emp;
+            });
+
+            saveData();
+            closeModal();
+            renderAll();
+            showToast(`已儲存新休假狀態！`);
+        }
+
+        function saveCustomLeave() {
+            const val = document.getElementById('custom-leave-input').value.trim();
+            if (val) {
+                selectLeaveType(val);
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('edit-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4";
+            selectedCell = null;
+        }
+
+        // 10. 大數據儀表板計算
+        function calculateStats() {
+            const typesList = document.getElementById('stats-types-list');
+            const rankList = document.getElementById('stats-rank-list');
+            const alertList = document.getElementById('stats-alert-list');
+
+            // 統計假別比例
+            const counts = {};
+            employees.forEach(emp => {
+                Object.values(emp.leaves).forEach(val => {
+                    if (val) counts[val] = (counts[val] || 0) + 1;
+                });
+            });
+
+            typesList.innerHTML = '';
+            if (Object.keys(counts).length === 0) {
+                typesList.innerHTML = '<p class="text-xs text-slate-400 text-center py-10">目前尚無排班假別數據</p>';
+            } else {
+                Object.entries(counts).forEach(([type, val]) => {
+                    const style = getLeaveStyle(type);
+                    typesList.innerHTML += `
+                        <div class="flex items-center justify-between text-xs">
+                            <span class="px-2 py-0.5 rounded ${style.bg} ${style.text} font-semibold">${type}</span>
+                            <div class="flex-1 mx-3 h-2 bg-slate-200 rounded-full overflow-hidden">
+                                <div class="h-full ${style.bg.split(' ')[0]}" style="width: ${Math.min(100, (val / 10) * 100)}%"></div>
+                            </div>
+                            <span class="font-bold text-slate-600">${val} 次</span>
+                        </div>
+                    `;
+                });
+            }
+
+            // 請假次數排行
+            const totals = employees.map(emp => {
+                const total = Object.entries(emp.leaves).filter(([d, val]) => {
+                    return val && val !== '國定假日' && val !== '端午節';
+                }).length;
+                return { name: emp.name, role: emp.role, total };
+            }).sort((a, b) => b.total - a.total);
+
+            rankList.innerHTML = '';
+            totals.slice(0, 5).forEach((item, index) => {
+                const crown = item.name === 'Joie' ? '👑' : '';
+                rankList.innerHTML += `
+                    <div class="flex items-center justify-between text-xs">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 font-bold">${index + 1}</span>
+                            <div>
+                                <span class="font-semibold text-slate-700">${item.name} ${crown}</span>
+                                <span class="text-[10px] text-slate-400">(${item.role})</span>
+                            </div>
+                        </div>
+                        <span class="font-bold text-slate-700">${item.total} 次</span>
+                    </div>
+                `;
+            });
+
+            // 人力拉警報 (篩選全年度)
+            alertList.innerHTML = '';
+            let alertsFound = false;
+            dateList.forEach(date => {
+                let count = 0;
+                employees.forEach(emp => {
+                    const status = emp.leaves[date];
+                    if (status && status !== '國定假日' && status !== '端午節') {
+                        count++;
+                    }
+                });
+
+                if (count >= 3) {
+                    alertsFound = true;
+                    alertList.innerHTML += `
+                        <div class="p-3 bg-amber-50 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs">
+                            <div>
+                                <p class="font-bold text-amber-900">⚠️ 同日休假緊繃日：${date}</p>
+                                <p class="text-[11px] text-amber-700 mt-0.5">當日共有 ${count} 位成員同時請假，請注意客服覆蓋率！</p>
+                            </div>
+                            <span class="px-2 py-1 bg-amber-200 text-amber-800 font-bold rounded-lg">${count}人假</span>
+                        </div>
+                    `;
+                }
+            });
+
+            if (!alertsFound) {
+                alertList.innerHTML = '<p class="text-xs text-slate-400 text-center py-10">🎉 讚！所有日期的休假調度均在安全值內。</p>';
+            }
+        }
+
+        // 11. 匯入原本的 CSV 檔案
+        function handleFileUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const text = e.target.result;
+                    const lines = text.split(/\r?\n/);
+                    if (lines.length < 2) {
+                        alert('CSV 檔案行數不正確！');
+                        return;
+                    }
+
+                    // 解析標頭以取得日期
+                    const headers = lines[0].split(',').map(h => h.trim().replace(/^"|"$/g, ''));
+                    const dateHeaders = headers.slice(2);
+
+                    const parsedEmployees = [];
+                    for (let i = 1; i < lines.length; i++) {
+                        const line = lines[i].trim();
+                        if (!line) continue;
+
+                        const cells = line.split(',').map(c => c.trim().replace(/^"|"$/g, ''));
+                        const role = cells[0] || '';
+                        const name = cells[1] || '';
+
+                        if (!name) continue;
+
+                        const leaves = {};
+                        dateHeaders.forEach((date, index) => {
+                            const val = cells[index + 2];
+                            if (val && val !== '') {
+                                leaves[date] = val;
+                            }
+                        });
+
+                        parsedEmployees.push({
+                            id: (Date.now() + i).toString(),
+                            role,
+                            name,
+                            leaves
+                        });
+                    }
+
+                    if (parsedEmployees.length > 0) {
+                        employees = parsedEmployees;
+                        dateList = dateHeaders;
+                        saveData();
+                        renderRoleDropdown();
+                        // 如果匯入新資料，先找出最早月份
+                        const firstDate = dateHeaders[0];
+                        if (firstDate) {
+                            monthFilter = firstDate.slice(0, 2);
+                        }
+                        renderMonthTabs();
+                        renderAll();
+                        showToast(`成功匯入 ${parsedEmployees.length} 位同仁的 CSV 資料！`);
+                    } else {
+                        alert('未能解析到任何有效的同仁資料。');
+                    }
+                } catch (err) {
+                    alert('匯入發生異常，請確定格式是否正確。');
+                }
+            };
+            reader.readAsText(file, 'UTF-8');
+        }
+
+        // 12. 匯出最新的 CSV 檔案 (全年度)
+        function handleExportCsv() {
+            try {
+                const headers = ['職務', 'Name', ...dateList];
+                const rows = employees.map(emp => {
+                    const rowCells = [
+                        emp.role,
+                        emp.name,
+                        ...dateList.map(date => emp.leaves[date] || '')
+                    ];
+                    return rowCells.map(cell => {
+                        const str = String(cell);
+                        if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+                            return `"${str.replace(/"/g, '""')}"`;
+                        }
+                        return str;
+                    }).join(',');
+                });
+
+                const csvContent = [headers.join(','), ...rows].join('\n');
+                // 加上 BOM (\uFEFF) 確保 Windows 系統的 Excel 開啟時，繁體中文不亂碼
+                const blob = new Blob(['\uFEFF' + csvContent], { type: 'text/csv;charset=utf-8;' });
+                const url = URL.createObjectURL(blob);
+                const link = document.createElement("a");
+                link.setAttribute("href", url);
+                link.setAttribute("download", `2026_CSA全年度員工休假狀況一覽表.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+                showToast('CSV 下載成功！');
+            } catch (err) {
+                alert('匯出失敗，請再試一次。');
+            }
+        }
+    </script>
+</body>
+</html>
