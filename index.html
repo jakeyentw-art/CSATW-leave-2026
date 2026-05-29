@@ -472,7 +472,7 @@ const firebaseConfig = { ... }
 
                 updateSyncBadgeConnecting();
 
-                // 使用 await 機制，確保能精準捕捉並分類認證錯誤 (如 Anonymous 未啟用)
+                // ⭐️ 用 await 確保連線、Auth 或安全規則錯誤能精準被下面的 catch 捕獲！
                 const userCredential = await auth.signInAnonymously();
                 
                 if (userCredential && userCredential.user) {
@@ -485,16 +485,36 @@ const firebaseConfig = { ... }
 
             } catch (err) {
                 console.error("雲端連線失敗:", err);
+                firebaseReady = false;
                 
-                let errorMsg = "雲端連線失敗，已切回本機暫存模式";
-                if (err && err.code === 'auth/operation-not-allowed') {
-                    errorMsg = "❌ 雲端連線失敗：請到 Firebase 的 Authentication 啟用「匿名登入 (Anonymous)」功能！";
+                let errorMsg = "❌ 雲端連線失敗";
+                if (err && err.code) {
+                    switch(err.code) {
+                        case 'auth/operation-not-allowed':
+                            errorMsg = "❌ 請至 Firebase 啟用 Anonymous (匿名登入) 功能！";
+                            break;
+                        case 'auth/unauthorized-domain':
+                            errorMsg = "❌ 網域未授權！請至 Firebase ➔ Authentication ➔ Settings ➔ Authorized domains，新增「jakeyentw-art.github.io」授權。";
+                            break;
+                        case 'auth/invalid-api-key':
+                            errorMsg = "❌ 錯誤的金鑰：您填寫的 apiKey 無效，請檢查雲端同步設定。";
+                            break;
+                        default:
+                            errorMsg = `❌ 連線錯誤 (${err.code}): ${err.message}`;
+                    }
                 } else if (err && err.message) {
                     errorMsg = `❌ 連線錯誤: ${err.message}`;
                 }
                 
                 showToast(errorMsg, "error");
-                firebaseReady = false;
+                
+                // 將狀態列直接更新為錯誤原因，引導使用者點擊處理
+                const badge = document.getElementById('sync-badge');
+                if (badge) {
+                    badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all shadow-sm animate-pulse";
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 連線失敗 (點此查看設定與網域授權)`;
+                }
+
                 loadLocalFallback();
             }
         }
@@ -516,6 +536,22 @@ const firebaseConfig = { ... }
             }
         }
 
+        // 處理 Firestore 的安全規則/讀寫被拒
+        function handleFirestoreError(err) {
+            if (err && err.code === 'permission-denied') {
+                const errMsg = "❌ 雲端資料庫讀寫遭拒：請確認您的 Firestore Database 安全規則 (Rules) 是否已改為 allow read, write: if true; 並已發布！";
+                showToast(errMsg, "error");
+                
+                const badge = document.getElementById('sync-badge');
+                if (badge) {
+                    badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all";
+                    badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 資料庫規則拒絕存取`;
+                }
+                firebaseReady = false;
+                loadLocalFallback();
+            }
+        }
+
         function setupRealtimeSync() {
             if (!firebaseReady || !db) return;
 
@@ -526,11 +562,14 @@ const firebaseConfig = { ... }
                 if (docSnap.exists) {
                     dateList = docSnap.data().dates || generateDatesFor2026();
                 } else {
-                    datesDocRef.set({ dates: generateDatesFor2026() });
+                    datesDocRef.set({ dates: generateDatesFor2026() }).catch(e => handleFirestoreError(e));
                 }
                 renderMonthTabs();
                 renderAll();
-            }, (err) => console.error("日期同步異常:", err));
+            }, (err) => {
+                console.error("日期同步異常:", err);
+                handleFirestoreError(err);
+            });
 
             empColRef.onSnapshot((querySnap) => {
                 const tempEmployees = [];
@@ -550,7 +589,7 @@ const firebaseConfig = { ... }
                             name: emp.name,
                             role: emp.role,
                             leaves: emp.leaves
-                        });
+                        }).catch(e => handleFirestoreError(e));
                     });
                 }
                 renderRoleDropdown();
@@ -558,8 +597,7 @@ const firebaseConfig = { ... }
                 calculateStats();
             }, (err) => {
                 console.error("同步遭遇異常，退回本地安全模式:", err);
-                firebaseReady = false;
-                loadLocalFallback();
+                handleFirestoreError(err);
             });
         }
 
@@ -1281,7 +1319,7 @@ const firebaseConfig = { ... }
             const text = document.getElementById('toast-text');
             text.innerText = message;
             toast.className = `fixed top-6 right-6 z-50 p-4 flex items-center gap-3 border rounded-2xl shadow-xl transition-all duration-300 ${
-                type === "error" ? "bg-rose-50 border-rose-200 text-rose-800" : "bg-emerald-50 border-emerald-200 text-emerald-800"
+                type === "error" ? "bg-rose-50 border-rose-200 text-rose-800 animate-bounce" : "bg-emerald-50 border-emerald-200 text-emerald-800"
             }`;
             toast.classList.remove('hidden');
             setTimeout(() => {
@@ -1290,7 +1328,7 @@ const firebaseConfig = { ... }
             setTimeout(() => {
                 toast.classList.remove('opacity-100', 'translate-y-0');
                 setTimeout(() => toast.classList.add('hidden'), 300);
-            }, 3000);
+            }, 4500); // 延長報錯顯現時間，讓使用者方便閱讀與複製提示
         }
 
         window.resetData = resetData;
