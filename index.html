@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>2026 CSA 員工休假管理系統 (全年度雲端同步版)</title>
+    <title>2026 CSA 員工休假管理系統 (全年度網址分享版)</title>
     <!-- 載入外觀樣式庫 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
@@ -32,12 +32,7 @@
             <span class="p-2 bg-teal-600/50 backdrop-blur rounded-xl text-xl">📅</span>
             <div>
                 <h1 class="text-2xl font-bold tracking-tight">2026 CSA 員工休假管理系統</h1>
-                <div class="flex items-center gap-2 mt-1">
-                    <!-- 雲端狀態指示燈 -->
-                    <span id="sync-badge" class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 cursor-pointer hover:bg-amber-500/30 transition-all" onclick="openConfigModal()">
-                        <span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> 偵測連線狀態中...
-                    </span>
-                </div>
+                <p class="text-teal-200 text-xs mt-0.5">免資料庫綠色版 · 修改後點擊右側「產生分享連結」即可一鍵同步給同仁</p>
             </div>
         </div>
         <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 w-full md:w-auto">
@@ -46,10 +41,11 @@
                 <span id="today-display" class="font-semibold text-white">載入中...</span>
             </div>
             <div class="flex gap-2">
-                <button onclick="openConfigModal()" class="px-3.5 py-2 bg-teal-600 hover:bg-teal-500 text-white rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2 font-semibold shadow-sm">
-                    ⚙️ 雲端同步設定
+                <!-- 一鍵產生分享網址按鈕 -->
+                <button onclick="generateShareUrl()" class="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2 font-bold shadow-md">
+                    🔗 產生分享協作連結
                 </button>
-                <button onclick="resetData()" class="px-3.5 py-2 text-teal-200 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2">
+                <button onclick="resetData()" class="px-3 py-2 text-teal-200 hover:text-white hover:bg-white/10 rounded-xl transition-all duration-200 text-sm flex items-center justify-center gap-2">
                     🔄 重設範本
                 </button>
             </div>
@@ -276,55 +272,24 @@
         </div>
     </div>
 
-    <!-- 5. 雲端同步設定彈出視窗 (Modal) -->
-    <div id="config-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4">
-        <div class="bg-white rounded-3xl max-w-lg w-full shadow-2xl border border-slate-100 overflow-hidden transform transition-all">
-            <div class="bg-gradient-to-r from-slate-700 to-slate-800 text-white p-6">
-                <div class="flex justify-between items-center">
-                    <h3 class="text-lg font-bold">⚙️ 雲端同步資料庫設定</h3>
-                    <button onclick="closeConfigModal()" class="text-white hover:text-white/80 text-xl font-medium">✕</button>
-                </div>
-                <p class="text-xs text-slate-300 mt-2">設定您專屬的 Firebase 資料庫以啟用跨電腦、多人即時共同協作編輯功能。</p>
+    <!-- 5. 偵測到他人分享排班之匯入提示視窗 (Modal) -->
+    <div id="import-share-modal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4">
+        <div class="bg-white rounded-3xl max-w-md w-full shadow-2xl border border-slate-100 overflow-hidden transform transition-all">
+            <div class="bg-gradient-to-r from-amber-500 to-amber-600 text-white p-6">
+                <h3 class="text-lg font-bold">📥 偵測到同仁分享的排班表</h3>
+                <p class="text-xs text-amber-100 mt-2">有人向您分享了最新修訂的 2026 CSA 員工休假排班表。</p>
             </div>
             <div class="p-6 space-y-4">
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">📡 雲端金鑰 Firebase Config (JSON 格式)</label>
-                    <textarea id="firebase-config-input" rows="6" placeholder='請直接貼上您在 Firebase Console 產生的整段 SDK Config 代碼，
-不論是：
-const firebaseConfig = { ... }
-或者
-{
-  "apiKey": "AIzaSy...",
-  "projectId": "..."
-}
-系統皆會智慧辨識！' class="w-full p-3 border border-slate-200 rounded-xl text-xs font-mono focus:ring-2 focus:ring-teal-500 focus:outline-none scrollbar-thin bg-slate-50"></textarea>
-                    
-                    <!-- 內嵌錯誤資訊提示區塊 (替代瀏覽器 Alert) -->
-                    <p id="config-error" class="text-rose-500 text-xs bg-rose-50 border border-rose-100 rounded-xl p-3.5 mt-2.5 hidden font-semibold leading-relaxed whitespace-pre-line"></p>
-                </div>
-
-                <div>
-                    <label class="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-1.5">📂 專案協作群組 ID (Workspace ID)</label>
-                    <input type="text" id="app-id-input" placeholder="csa-leave-manager-2026" class="w-full px-3.5 py-2 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-teal-500 focus:outline-none" />
-                    <p class="text-[10px] text-slate-400 mt-1">💡 相同資料庫金鑰下，使用同一個群組 ID 的同仁將能看到並編輯同一份資料。</p>
-                </div>
-
-                <!-- 操作教學指引 -->
-                <div class="p-3.5 bg-blue-50/50 border border-blue-100 rounded-2xl text-xs text-slate-600 space-y-1">
-                    <p class="font-bold text-blue-800">💡 3步免費擁有專屬雲端資料庫：</p>
-                    <p>1. 前往 <a href="https://console.firebase.google.com" target="_blank" class="text-teal-600 font-bold underline font-semibold">Firebase Console</a> 免費新增專案。</p>
-                    <p>2. 在專案中啟用 <b>Firestore Database</b> (安全規則修改為 <code class="bg-amber-100 px-1 text-[10px] rounded">allow read, write: if true;</code>)。</p>
-                    <p>3. 新增 Web 應用程式，將 Config JSON 複製貼入上方儲存即可！</p>
+                <div class="p-4 bg-amber-50 border border-amber-100 rounded-2xl">
+                    <p class="text-xs text-amber-800 font-bold mb-1">💡 匯入說明：</p>
+                    <p class="text-xs text-slate-600 leading-relaxed">
+                        點選「確認載入」後，系統會自動載入最新排班表，並將其覆蓋並儲存至您本機的瀏覽器。
+                    </p>
                 </div>
             </div>
-            <div class="bg-slate-50 px-6 py-4 flex justify-between items-center border-t border-slate-100">
-                <button onclick="clearConfig()" class="px-3.5 py-2 text-rose-500 hover:bg-rose-50 rounded-xl text-xs font-semibold transition-all">
-                    🗑️ 移除同步並回到本地儲存
-                </button>
-                <div class="flex gap-2">
-                    <button onclick="closeConfigModal()" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-semibold">取消</button>
-                    <button onclick="saveConfig()" class="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-bold rounded-xl shadow-md">儲存設定並重啟</button>
-                </div>
+            <div class="bg-slate-50 px-6 py-4 flex justify-end gap-3 border-t border-slate-100">
+                <button onclick="closeImportShareModal()" class="px-4 py-2 text-slate-500 hover:text-slate-700 text-sm font-semibold">保留我原本的</button>
+                <button onclick="confirmImportShare()" class="px-5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-bold rounded-xl shadow-md">確認載入並覆蓋</button>
             </div>
         </div>
     </div>
@@ -332,7 +297,7 @@ const firebaseConfig = { ... }
     <!-- 頁面主邏輯 -->
     <script>
         // ==========================================
-        // 1. 全域變數與 SafeStorage 智慧防卡死沙盒
+        // 1. 全域安全 LocalStorage 防崩潰防護
         // ==========================================
         const safeStorage = {
             getItem(key) {
@@ -345,11 +310,6 @@ const firebaseConfig = { ... }
                 try { localStorage.removeItem(key); } catch (e) {}
             }
         };
-
-        let appId = safeStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
-        let db = null;
-        let auth = null;
-        let firebaseReady = false;
 
         const HOLIDAYS_2026 = {
             '05/01': { name: '勞動節', type: 'TW' },
@@ -373,7 +333,7 @@ const firebaseConfig = { ... }
             { id: '7', role: 'DSM', name: 'Jake', leaves: { '05/29(五)': '全日休假', '06/12(五)': '全日休假', '06/25(四)': '全日休假' } },
             { id: '8', role: 'DSM', name: 'Alvin', leaves: { '06/19(五)': '端午節', '06/22(一)': '全日休假' } },
             { id: '9', role: 'QA', name: 'Fiona', leaves: { '06/05(五)': '下午休假4小時' } },
-            { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '事假', '05/29(五)': '全日休假' } }
+            { id: '10', role: 'Support', name: 'Evelyn', leaves: { '05/28(四)': '下午休假4小時', '05/29(五)': '全日休假' } }
         ];
 
         function sanitizeEmployees(rawEmployees) {
@@ -394,36 +354,28 @@ const firebaseConfig = { ... }
         let viewMode = 'timeline'; 
         let selectedCell = null; 
         let currentPeriod = '上午'; 
+        let pendingShareData = null; // 待匯入的分享排班
+
         const TODAY_STR = getTodayStr(); 
 
         // ==========================================
-        // 2. 開機引導與非同步優雅載入
+        // 2. 初始化開機
         // ==========================================
         window.onload = function() {
             document.getElementById('today-display').innerText = getFullTodayDisplay();
             renderLegend();
             
-            // ⭐️ 0.01秒先由本地快取渲染（保證永不卡死）
+            // 0.01秒載入快取渲染（保證永不當機卡死）
             loadLocalFallback();
 
-            // ⭐️ 背景靜默連線
-            runAuthAndSync();
+            // 智慧解析網址是否夾帶他人分享的加密資料
+            checkShareUrl();
         };
-
-        function loadScript(url) {
-            return new Promise((resolve, reject) => {
-                const script = document.createElement('script');
-                script.src = url;
-                script.onload = resolve;
-                script.onerror = () => reject(new Error(`無法加載資源: ${url}`));
-                document.head.appendChild(script);
-            });
-        }
 
         function generateDatesFor2026() {
             const dates = [];
-            const start = new Date(2026, 4, 1); // 5月
-            const end = new Date(2026, 11, 31); // 12月
+            const start = new Date(2026, 4, 1); 
+            const end = new Date(2026, 11, 31); 
             const weekdays = ['日', '一', '二', '三', '四', '五', '六'];
             
             let current = new Date(start);
@@ -439,7 +391,7 @@ const firebaseConfig = { ... }
 
         function getTodayStr() {
             const now = new Date();
-            // 強制模擬 2026 時間日期定位，排除跨年份星期偏差
+            // 強制模擬 2026 時間定位，排除跨年份星期偏差
             const year2026Date = new Date(2026, now.getMonth(), now.getDate());
             const m = String(year2026Date.getMonth() + 1).padStart(2, '0');
             const d = String(year2026Date.getDate()).padStart(2, '0');
@@ -470,186 +422,104 @@ const firebaseConfig = { ... }
         function loadLocalFallback() {
             const cached = safeStorage.getItem('csa_leaves_2026');
             employees = cached ? sanitizeEmployees(JSON.parse(cached)) : sanitizeEmployees(INITIAL_EMPLOYEES);
-            updateSyncBadge('offline');
+            
+            updateSyncBadge();
             renderMonthTabs();
             renderRoleDropdown();
             renderAll();
             calculateStats();
         }
 
-        // ==========================================
-        // 3. 雲端資料庫智慧防卡連線與錯誤診斷
-        // ==========================================
-        async function runAuthAndSync() {
-            updateSyncBadge('connecting');
-            
-            // 1. 動態按序載入相容性 Firebase Compat SDK，防範阻擋卡死
-            try {
-                if (typeof firebase === 'undefined') {
-                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js");
-                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js");
-                    await loadScript("https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js");
-                }
-            } catch (e) {
-                console.error("Firebase SDK 載入遭阻擋:", e);
-                updateSyncBadge('error', 'Firebase 資源載入遭廣告插件或防火牆阻擋');
-                loadLocalFallback();
-                return;
-            }
-
-            // 2. 檢測是否有設定金鑰
-            let activeConfigStr = safeStorage.getItem('custom_firebase_config');
-            if (!activeConfigStr) {
-                updateSyncBadge('offline');
-                return;
-            }
-
-            try {
-                const firebaseConfig = JSON.parse(activeConfigStr);
-                if (firebase.apps.length === 0) {
-                    firebase.initializeApp(firebaseConfig);
-                }
-                auth = firebase.auth();
-                db = firebase.firestore();
-
-                // 3. 異步安全登入 (Rule 3)
-                const userCredential = await auth.signInAnonymously();
-                
-                if (userCredential && userCredential.user) {
-                    updateSyncBadge('online');
-                    setupRealtimeSync();
-                } else {
-                    throw new Error("授權失敗");
-                }
-
-            } catch (err) {
-                console.error("Firebase 雲端連線失敗:", err);
-                let details = "連線失敗";
-                if (err && err.code) {
-                    switch(err.code) {
-                        case 'auth/operation-not-allowed':
-                            details = "請至 Firebase 啟用 Anonymous (匿名登入) 功能";
-                            break;
-                        case 'auth/unauthorized-domain':
-                            details = "網域未獲授權，請在後台 Authorized domains 新增「jakeyentw-art.github.io」";
-                            break;
-                        case 'auth/invalid-api-key':
-                            details = "apiKey 金鑰無效，請重新設定";
-                            break;
-                        default:
-                            details = `${err.code}: ${err.message}`;
-                    }
-                } else if (err && err.message) {
-                    details = err.message;
-                }
-                updateSyncBadge('error', details);
-                showToast(`⚠️ 雲端連線失敗: ${details}`, "error");
-                loadLocalFallback();
-            }
-        }
-
-        function updateSyncBadge(status, details = "") {
+        function updateSyncBadge() {
             const badge = document.getElementById('sync-badge');
             if (!badge) return;
-            
-            if (status === 'connecting') {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span> ⏳ 雲端同步連線中...`;
-            } else if (status === 'online') {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shadow-sm cursor-pointer hover:bg-emerald-500/30 transition-all";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> 🟢 雲端同步中 (多人即時協作中)`;
-            } else if (status === 'offline') {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-slate-500/20 text-slate-400 border border-slate-500/30 cursor-pointer hover:bg-slate-500/30 transition-all";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-slate-400"></span> ⚪ 本地離線儲存模式 (點此進行同步設定)`;
-            } else if (status === 'error') {
-                badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-500/20 text-rose-300 border border-rose-500/30 cursor-pointer hover:bg-rose-500/30 transition-all shadow-sm animate-pulse";
-                badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-rose-400"></span> 🔴 連線失敗：${details}`;
+            badge.className = "inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30";
+            badge.innerHTML = `<span class="w-2 h-2 rounded-full bg-emerald-400"></span> 🟢 本地無資料庫綠色版 (100% 正常運作中)`;
+        }
+
+        // ==========================================
+        // 🔮 核心黑科技：「無資料庫·網址一鍵同步」
+        // ==========================================
+        function generateShareUrl() {
+            try {
+                // 將同仁排班表壓縮轉為 Base64 格式
+                const rawJson = JSON.stringify(employees);
+                const compressedBase64 = btoa(unescape(encodeURIComponent(rawJson)));
+                
+                // 去除原本網址中的雜質雜項
+                const baseUrl = window.location.origin + window.location.pathname;
+                const fullShareUrl = `${baseUrl}#share=${compressedBase64}`;
+
+                // 複製至剪貼簿（相容 Iframe 限制）
+                const tempTextArea = document.createElement("textarea");
+                tempTextArea.value = fullShareUrl;
+                document.body.appendChild(tempTextArea);
+                tempTextArea.select();
+                document.execCommand('copy');
+                document.body.removeChild(tempTextArea);
+
+                showToast("🎉 分享協作連結已複製到您的剪貼簿！可直接傳給同仁囉！");
+            } catch(e) {
+                console.error("生成分享連結失敗", e);
+                alert("生成分享網址失敗，請再試一次。");
             }
         }
 
-        function handleFirestoreError(err) {
-            if (err && err.code === 'permission-denied') {
-                const errMsg = "請確認 Firestore Database 的 Rules 安全規則已改為 allow read, write: if true; 並且發布！";
-                updateSyncBadge('error', '資料庫規則拒絕存取');
-                showToast(`⚠️ ${errMsg}`, "error");
-                firebaseReady = false;
-                loadLocalFallback();
+        function checkShareUrl() {
+            const hash = window.location.hash;
+            if (hash && hash.startsWith('#share=')) {
+                try {
+                    const base64Data = hash.substring(7);
+                    // 智慧 UTF-8 反向編碼解析
+                    const rawJson = decodeURIComponent(escape(atob(base64Data)));
+                    pendingShareData = sanitizeEmployees(JSON.parse(rawJson));
+
+                    // 跳出精美無痛導入 Modal
+                    document.getElementById('import-share-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4";
+                } catch(e) {
+                    console.error("解析分享資料失敗", e);
+                }
             }
         }
 
-        function setupRealtimeSync() {
-            if (!firebaseReady || !db) return;
-
-            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
-            const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
-
-            datesDocRef.onSnapshot((docSnap) => {
-                if (docSnap.exists) {
-                    dateList = docSnap.data().dates || generateDatesFor2026();
-                } else {
-                    datesDocRef.set({ dates: generateDatesFor2026() }).catch(e => handleFirestoreError(e));
-                }
-                renderMonthTabs();
-                renderAll();
-            }, (err) => {
-                console.error("日期同步異常:", err);
-                handleFirestoreError(err);
-            });
-
-            empColRef.onSnapshot((querySnap) => {
-                const tempEmployees = [];
-                querySnap.forEach((doc) => {
-                    tempEmployees.push({
-                        id: doc.id,
-                        ...doc.data()
-                    });
-                });
-
-                if (tempEmployees.length > 0) {
-                    employees = sanitizeEmployees(tempEmployees);
-                } else {
-                    employees = sanitizeEmployees(INITIAL_EMPLOYEES);
-                    INITIAL_EMPLOYEES.forEach((emp) => {
-                        empColRef.doc(emp.id).set({
-                            name: emp.name,
-                            role: emp.role,
-                            leaves: emp.leaves
-                        }).catch(e => handleFirestoreError(e));
-                    });
-                }
+        function confirmImportShare() {
+            if (pendingShareData) {
+                employees = pendingShareData;
+                saveData();
                 renderRoleDropdown();
                 renderAll();
                 calculateStats();
-            }, (err) => {
-                console.error("同步遭遇異常，退回本地安全模式:", err);
-                handleFirestoreError(err);
-            });
+                closeImportShareModal();
+                showToast("🚀 成功載入並覆蓋最新排班表！");
+                
+                // 清理 URL hash，防止重新整理一直提示
+                window.location.hash = "";
+            }
+        }
+
+        function closeImportShareModal() {
+            document.getElementById('import-share-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4";
+            pendingShareData = null;
+            // 清理網址中的 Hash
+            window.location.hash = "";
         }
 
         // ==========================================
         // 4. 前台秒級渲染 (Optimistic High-Speed Rendering)
         // ==========================================
-        function getRoleBadgeStyle(role) {
-            if (!role) return 'bg-slate-100 text-slate-700 border-slate-200';
-            const r = role.trim().toUpperCase();
-            switch (r) {
-                case 'DIRECTOR':
-                    return 'bg-rose-100 text-rose-800 border border-rose-200';
-                case 'BI':
-                    return 'bg-sky-100 text-sky-800 border border-sky-200';
-                case 'REM':
-                    return 'bg-violet-100 text-violet-800 border border-violet-200';
-                case 'TRAINER':
-                    return 'bg-emerald-100 text-emerald-800 border border-emerald-200';
-                case 'DSM':
-                    return 'bg-amber-100 text-amber-800 border border-amber-200';
-                case 'QA':
-                    return 'bg-fuchsia-100 text-fuchsia-800 border border-fuchsia-200';
-                case 'SUPPORT':
-                    return 'bg-teal-100 text-teal-800 border border-teal-200';
-                default:
-                    return 'bg-slate-100 text-slate-700 border border-slate-200';
+        function getLeaveStyle(val) {
+            if (!val) return { label: '💻 上班', bg: 'bg-slate-50 hover:bg-slate-100', text: 'text-slate-600', border: 'border-slate-200' };
+            if (val === '全日休假') return { label: '🌴 全日休假', bg: 'bg-rose-100 hover:bg-rose-200', text: 'text-rose-700', border: 'border-rose-300' };
+            if (val.startsWith('上午休假')) {
+                return { label: val, bg: 'bg-emerald-50 hover:bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-200' };
             }
+            if (val.startsWith('下午休假')) {
+                return { label: val, bg: 'bg-indigo-50 hover:bg-indigo-100', text: 'text-indigo-700', border: 'border-indigo-200' };
+            }
+            if (val.includes('端午節') || val.includes('國定假日') || val.includes('中秋節')) {
+                return { label: val, bg: 'bg-amber-100 hover:bg-amber-200', text: 'text-amber-700', border: 'border-amber-300' };
+            }
+            return { label: val, bg: 'bg-teal-50 hover:bg-teal-100', text: 'text-teal-800', border: 'border-teal-200' };
         }
 
         function renderAll() {
@@ -831,8 +701,12 @@ const firebaseConfig = { ... }
         }
 
         // ==========================================
-        // 5. 樂觀 UI 異步控制 (Optimistic Updates)
+        // 5. 操作儲存與快取機制
         // ==========================================
+        function saveData() {
+            safeStorage.setItem('csa_leaves_2026', JSON.stringify(employees));
+        }
+
         async function selectLeaveType(value) {
             if (!selectedCell) return;
             const { empId, date } = selectedCell;
@@ -849,28 +723,17 @@ const firebaseConfig = { ... }
                 }
                 return emp;
             });
+            
+            saveData();
             renderAll();
             calculateStats();
-
-            if (firebaseReady && db && auth && auth.currentUser) {
-                const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
-                const emp = employees.find(e => e.id === empId);
-                if (emp) {
-                    empColRef.doc(empId).set({
-                        name: emp.name,
-                        role: emp.role,
-                        leaves: emp.leaves
-                    }).catch(err => {
-                        console.error("Firestore 同步失敗:", err);
-                        saveData();
-                    });
-                }
-            } else {
-                saveData();
-            }
-
             closeModal();
             showToast(`已儲存新休假狀態！`);
+        }
+
+        function toggleAddForm() {
+            const form = document.getElementById('add-form');
+            form.classList.toggle('hidden');
         }
 
         async function handleAddEmployee() {
@@ -891,20 +754,10 @@ const firebaseConfig = { ... }
             };
 
             employees.push(newEmp);
+            saveData();
             renderRoleDropdown();
             renderAll();
             calculateStats();
-
-            if (firebaseReady && db && auth && auth.currentUser) {
-                const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
-                empColRef.doc(newId).set({
-                    name: newEmp.name,
-                    role: newEmp.role,
-                    leaves: newEmp.leaves
-                }).catch(err => console.error(err));
-            } else {
-                saveData();
-            }
 
             document.getElementById('new-name').value = '';
             document.getElementById('new-role').value = '';
@@ -915,23 +768,12 @@ const firebaseConfig = { ... }
         async function handleDeleteEmployee(id, name) {
             if (confirm(`確定要將「${name}」從排班表中徹底移除嗎？`)) {
                 employees = employees.filter(emp => emp.id !== id);
+                saveData();
                 renderRoleDropdown();
                 renderAll();
                 calculateStats();
-
-                if (firebaseReady && db && auth && auth.currentUser) {
-                    const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
-                    empColRef.doc(id).delete().catch(err => console.error(err));
-                } else {
-                    saveData();
-                }
                 showToast(`已成功移除同仁: ${name}`);
             }
-        }
-
-        function toggleAddForm() {
-            const form = document.getElementById('add-form');
-            form.classList.toggle('hidden');
         }
 
         function openCellModal(empId, date, currentValue) {
@@ -1022,6 +864,87 @@ const firebaseConfig = { ... }
         function closeModal() {
             document.getElementById('edit-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4";
             selectedCell = null;
+        }
+
+        // ==========================================
+        // 6. 其他 UI / 大數據統計與匯出匯出
+        // ==========================================
+        function resetData() {
+            if (confirm('確定要還原成初始乾淨預設資料嗎？這會覆蓋您目前的修改。')) {
+                employees = INITIAL_EMPLOYEES;
+                dateList = generateDatesFor2026();
+                saveData();
+                renderRoleDropdown();
+                renderAll();
+                calculateStats();
+                showToast("資料已重設為範本狀態");
+            }
+        }
+
+        function renderMonthTabs() {
+            const container = document.getElementById('month-tabs-container');
+            const months = [
+                { id: 'All', label: '📊 顯示全年度' },
+                { id: '05', label: '5 月' },
+                { id: '06', label: '6 月' },
+                { id: '07', label: '7 月' },
+                { id: '08', label: '8 月' },
+                { id: '09', label: '9 月' },
+                { id: '10', label: '10 月' },
+                { id: '11', label: '11 月' },
+                { id: '12', label: '12 月' },
+            ];
+
+            let html = '';
+            months.forEach(m => {
+                const isActive = monthFilter === m.id;
+                const btnClass = isActive 
+                    ? "px-4 py-2 bg-teal-600 text-white rounded-xl text-xs font-bold shadow-md shrink-0 transition-all"
+                    : "px-4 py-2 bg-white text-slate-600 hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold shrink-0 transition-all";
+                
+                html += `
+                    <button onclick="setMonthFilter('${m.id}')" id="tab-month-${m.id}" class="${btnClass}">
+                        ${m.label}
+                    </button>
+                `;
+            });
+            container.innerHTML = html;
+        }
+
+        function setMonthFilter(month) {
+            monthFilter = month;
+            renderMonthTabs(); 
+            renderAll();
+        }
+
+        function setViewMode(mode) {
+            viewMode = mode;
+            const timelineBox = document.getElementById('view-timeline-box');
+            const statsBox = document.getElementById('view-stats-box');
+            const btnTimeline = document.getElementById('btn-view-timeline');
+            const btnStats = document.getElementById('btn-view-stats');
+
+            if (mode === 'timeline') {
+                timelineBox.classList.remove('hidden');
+                statsBox.classList.add('hidden');
+                btnTimeline.className = "px-3 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition-all";
+                btnStats.className = "px-3 py-1 rounded-md font-semibold text-slate-500";
+            } else {
+                timelineBox.classList.add('hidden');
+                statsBox.classList.remove('hidden');
+                btnTimeline.className = "px-3 py-1 rounded-md font-semibold text-slate-500";
+                btnStats.className = "px-3 py-1 rounded-md font-semibold bg-white text-slate-800 shadow-sm transition-all";
+                calculateStats();
+            }
+        }
+
+        function renderRoleDropdown() {
+            const dropdown = document.getElementById('role-filter');
+            const allRoles = [...new Set(employees.map(e => e.role).filter(Boolean))];
+            dropdown.innerHTML = '<option value="All">所有職務</option>';
+            allRoles.forEach(role => {
+                dropdown.innerHTML += `<option value="${role}">${role}</option>`;
+            });
         }
 
         function calculateStats() {
@@ -1163,26 +1086,7 @@ const firebaseConfig = { ... }
                         renderMonthTabs();
                         renderAll();
                         calculateStats();
-
-                        if (firebaseReady && db && auth && auth.currentUser) {
-                            showToast('正在同步上傳至雲端資料庫...');
-                            const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
-                            const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
-                            
-                            for (const emp of employees) {
-                                await empColRef.doc(emp.id).delete();
-                            }
-                            for (const emp of parsedEmployees) {
-                                await empColRef.doc(emp.id).set({
-                                    name: emp.name,
-                                    role: emp.role,
-                                    leaves: emp.leaves
-                                });
-                            }
-                            await datesDocRef.set({ dates: dateHeaders });
-                        } else {
-                            saveData();
-                        }
+                        saveData();
                         showToast(`成功匯入 ${parsedEmployees.length} 位同仁的 CSV 資料！`);
                     } else {
                         alert('未能解析到任何有效的同仁資料。');
@@ -1227,100 +1131,6 @@ const firebaseConfig = { ... }
             }
         }
 
-        function openConfigModal() {
-            const currentConfig = safeStorage.getItem('custom_firebase_config') || '';
-            const currentAppId = safeStorage.getItem('custom_app_id') || 'csa-leave-manager-2026';
-            
-            document.getElementById('firebase-config-input').value = currentConfig;
-            document.getElementById('app-id-input').value = currentAppId;
-            
-            const errorEl = document.getElementById('config-error');
-            if (errorEl) {
-                errorEl.classList.add('hidden');
-                errorEl.innerText = '';
-            }
-            
-            document.getElementById('config-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4";
-        }
-
-        function closeConfigModal() {
-            document.getElementById('config-modal').className = "fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs hidden items-center justify-center p-4";
-        }
-
-        function saveConfig() {
-            const configInput = document.getElementById('firebase-config-input').value.trim();
-            const appIdInput = document.getElementById('app-id-input').value.trim() || 'csa-leave-manager-2026';
-            const errorEl = document.getElementById('config-error');
-
-            if (errorEl) {
-                errorEl.classList.add('hidden');
-                errorEl.innerText = '';
-            }
-
-            if (!configInput) {
-                showConfigError('⚠️ 請貼入有效的 Firebase Config 內容。');
-                return;
-            }
-
-            try {
-                // 智慧清洗
-                let cleanStr = configInput.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
-                if (cleanStr.includes('{') && cleanStr.includes('}')) {
-                    cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
-                }
-                
-                const parsedConfig = (new Function(`return (${cleanStr})`))();
-
-                if (!parsedConfig || typeof parsedConfig !== 'object') {
-                    throw new Error("提取出來的設定不是一個有效的 JavaScript 物件。");
-                }
-
-                if (!parsedConfig.apiKey || !parsedConfig.projectId) {
-                    throw new Error("缺少必要的 'apiKey' 或 'projectId' 欄位。");
-                }
-
-                const standardConfig = {
-                    apiKey: String(parsedConfig.apiKey || '').trim(),
-                    authDomain: String(parsedConfig.authDomain || '').trim(),
-                    projectId: String(parsedConfig.projectId || '').trim(),
-                    storageBucket: String(parsedConfig.storageBucket || '').trim(),
-                    messagingSenderId: String(parsedConfig.messagingSenderId || '').trim(),
-                    appId: String(parsedConfig.appId || '').trim()
-                };
-
-                safeStorage.setItem('custom_firebase_config', JSON.stringify(standardConfig));
-                safeStorage.setItem('custom_app_id', appIdInput);
-                showToast('雲端設定儲存成功！正在重新啟動...');
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
-
-            } catch (e) {
-                showConfigError(`❌ 設定解析失敗：${e.message}\n\n【提示】請回到您的 Firebase 控制台，找到像這樣的程式碼塊：\nconst firebaseConfig = { ... };\n然後「整段直接複製」貼到上方即可！`);
-            }
-        }
-
-        function showConfigError(msg) {
-            const errorEl = document.getElementById('config-error');
-            if (errorEl) {
-                errorEl.innerText = msg;
-                errorEl.classList.remove('hidden');
-            } else {
-                alert(msg);
-            }
-        }
-
-        function clearConfig() {
-            if (confirm('確定要移除此網頁的雲端連結嗎？移除後將回到單機離線儲存。')) {
-                safeStorage.removeItem('custom_firebase_config');
-                safeStorage.removeItem('custom_app_id');
-                showToast('已回到單機離線模式，正在重啟...');
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
-            }
-        }
-
         function showToast(message, type = "success") {
             const toast = document.getElementById('toast');
             const text = document.getElementById('toast-text');
@@ -1338,6 +1148,9 @@ const firebaseConfig = { ... }
             }, 4500); 
         }
 
+        // ==========================================
+        // 7. 將事件對外暴露給 HTML onclick 呼叫
+        // ==========================================
         window.resetData = resetData;
         window.setMonthFilter = setMonthFilter;
         window.setViewMode = setViewMode;
@@ -1351,10 +1164,9 @@ const firebaseConfig = { ... }
         window.handleFileUpload = handleFileUpload;
         window.handleExportCsv = handleExportCsv;
         window.renderAll = renderAll;
-        window.openConfigModal = openConfigModal;
-        window.closeConfigModal = closeConfigModal;
-        window.saveConfig = saveConfig;
-        window.clearConfig = clearConfig;
+        window.generateShareUrl = generateShareUrl;
+        window.confirmImportShare = confirmImportShare;
+        window.closeImportShareModal = closeImportShareModal;
     </script>
 </body>
 </html>
