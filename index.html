@@ -469,21 +469,31 @@ const firebaseConfig = { ... }
                 }
                 auth = firebase.auth();
                 db = firebase.firestore();
-                firebaseReady = true;
 
                 updateSyncBadgeConnecting();
 
-                auth.signInAnonymously().then((userCredential) => {
-                    if (userCredential.user) {
-                        updateSyncBadge(true);
-                        setupRealtimeSync();
-                    }
-                }).catch(err => {
-                    throw err;
-                });
+                // 使用 await 機制，確保能精準捕捉並分類認證錯誤 (如 Anonymous 未啟用)
+                const userCredential = await auth.signInAnonymously();
+                
+                if (userCredential && userCredential.user) {
+                    firebaseReady = true;
+                    updateSyncBadge(true);
+                    setupRealtimeSync();
+                } else {
+                    throw new Error("認證回傳值無效");
+                }
 
             } catch (err) {
-                console.error("雲端連線失敗，自動轉向本地安全暫存模式:", err);
+                console.error("雲端連線失敗:", err);
+                
+                let errorMsg = "雲端連線失敗，已切回本機暫存模式";
+                if (err && err.code === 'auth/operation-not-allowed') {
+                    errorMsg = "❌ 雲端連線失敗：請到 Firebase 的 Authentication 啟用「匿名登入 (Anonymous)」功能！";
+                } else if (err && err.message) {
+                    errorMsg = `❌ 連線錯誤: ${err.message}`;
+                }
+                
+                showToast(errorMsg, "error");
                 firebaseReady = false;
                 loadLocalFallback();
             }
