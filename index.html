@@ -318,7 +318,7 @@ const firebaseConfig = { ... }
                 <!-- 操作教學指引 -->
                 <div class="p-3.5 bg-blue-50/50 border border-blue-100 rounded-2xl text-xs text-slate-600 space-y-1">
                     <p class="font-bold text-blue-800">💡 3步免費擁有專屬雲端資料庫：</p>
-                    <p>1. 前往 <a href="https://console.firebase.google.com" target="_blank" class="text-teal-600 font-bold underline">Firebase Console</a> 免費新增專案。</p>
+                    <p>1. 前往 <a href="https://console.firebase.google.com" target="_blank" class="text-teal-600 font-bold underline font-semibold">Firebase Console</a> 免費新增專案。</p>
                     <p>2. 在專案中啟用 <b>Firestore Database</b> (安全規則修改為 <code class="bg-amber-100 px-1 text-[10px] rounded">allow read, write: if true;</code>)。</p>
                     <p>3. 新增 Web 應用程式，將 Config JSON 複製貼入上方儲存即可！</p>
                 </div>
@@ -421,6 +421,7 @@ const firebaseConfig = { ... }
             return dates;
         }
 
+        // 當天固定格式
         function getFullTodayDisplay() {
             return "2026年05月29日 (五)";
         }
@@ -472,7 +473,8 @@ const firebaseConfig = { ... }
 
                 updateSyncBadgeConnecting();
 
-                // ⭐️ 用 await 確保連線、Auth 或安全規則錯誤能精準被下面的 catch 捕獲！
+                // ⭐️ 重大修正：使用「await」進行阻斷式非同步等待，
+                // 這樣一來如果連線或安全驗證（Anonymous）失敗，異常才會「真正被 catch 捕捉」！
                 const userCredential = await auth.signInAnonymously();
                 
                 if (userCredential && userCredential.user) {
@@ -555,6 +557,7 @@ const firebaseConfig = { ... }
         function setupRealtimeSync() {
             if (!firebaseReady || !db) return;
 
+            // ⭐️ 移除冗餘判斷，確保路徑在 SDK 內加載 100% 準確
             const datesDocRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('metadata').doc('dates');
             const empColRef = db.collection('artifacts').doc(appId).collection('public').doc('data').collection('employees');
 
@@ -1224,7 +1227,6 @@ const firebaseConfig = { ... }
             document.getElementById('firebase-config-input').value = currentConfig;
             document.getElementById('app-id-input').value = currentAppId;
             
-            // 開啟時重設隱藏錯誤資訊
             const errorEl = document.getElementById('config-error');
             if (errorEl) {
                 errorEl.classList.add('hidden');
@@ -1254,24 +1256,23 @@ const firebaseConfig = { ... }
             }
 
             try {
-                // 🧠 智慧清洗機制：移除註解，抓取中括號 { ... } 內容
+                // 🧠 智慧清洗機制
                 let cleanStr = configInput.replace(/\/\*[\s\S]*?\*\/|([^\\:]|^)\/\/.*$/gm, '$1');
                 if (cleanStr.includes('{') && cleanStr.includes('}')) {
                     cleanStr = cleanStr.substring(cleanStr.indexOf('{'), cleanStr.lastIndexOf('}') + 1);
                 }
                 
-                // 使用 Function 沙盒做彈性語意分析 (解決無雙引號、單引號、末尾逗號與分號等 JavaScript 語法特徵)
                 const parsedConfig = (new Function(`return (${cleanStr})`))();
 
                 if (!parsedConfig || typeof parsedConfig !== 'object') {
-                    throw new Error("提取出來的設定不是一個有效的 JavaScript 物件字面量。");
+                    throw new Error("提取出來的設定不是一個有效的 JavaScript 物件。");
                 }
 
                 if (!parsedConfig.apiKey || !parsedConfig.projectId) {
                     throw new Error("缺少必要的 'apiKey' 或 'projectId' 欄位。");
                 }
 
-                // 洗滌格式，重新包裝成標準 JSON 儲存，保障 Firebase 完全認得！
+                // 重新封裝
                 const standardConfig = {
                     apiKey: String(parsedConfig.apiKey || '').trim(),
                     authDomain: String(parsedConfig.authDomain || '').trim(),
@@ -1289,7 +1290,7 @@ const firebaseConfig = { ... }
                 }, 1000);
 
             } catch (e) {
-                showConfigError(`❌ 設定解析失敗：${e.message}\n\n【提示】請回到您的 Firebase 控制台，找到像這樣的程式碼塊：\nconst firebaseConfig = { ... };\n然後「整段直接複製」貼到上方即可，本系統的智慧解譯器會自動幫您轉化！`);
+                showConfigError(`❌ 設定解析失敗：${e.message}\n\n【提示】請回到您的 Firebase 控制台，找到像這樣的程式碼塊：\nconst firebaseConfig = { ... };\n然後「整段直接複製」貼到上方即可！`);
             }
         }
 
@@ -1328,7 +1329,7 @@ const firebaseConfig = { ... }
             setTimeout(() => {
                 toast.classList.remove('opacity-100', 'translate-y-0');
                 setTimeout(() => toast.classList.add('hidden'), 300);
-            }, 4500); // 延長報錯顯現時間，讓使用者方便閱讀與複製提示
+            }, 4500); 
         }
 
         window.resetData = resetData;
